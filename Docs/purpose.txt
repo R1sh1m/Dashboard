@@ -1,0 +1,3 @@
+BME688 environmental sensor, neo-m8n gps module, mmwave sensor (ld2410b) so far and sx1262 lora module, stm will be connected to the esp as well 
+
+Dashboard will reflect gps location on a map, points of interest marked based on human presence (for now, other parameters can be setup later), last known location if gps stops working and/or transmission stops being received, environmental data (temp, pressure, humidity, gas data).
