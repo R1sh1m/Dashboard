@@ -59,7 +59,7 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
     <>
       <div className="sheet-overlay" onClick={onClose} />
 
-      <div className="sheet">
+      <div className="sheet telemetry-sheet is-open" role="dialog" aria-label="Telemetry">
         <div className="sheet-header">
           <span className="sheet-title">Telemetry</span>
           <button

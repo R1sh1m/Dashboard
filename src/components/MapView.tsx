@@ -14,7 +14,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-import { MAP_LAYERS, type MapType } from '../lib/mapLayers';
+import { getTileLayer, type MapType } from '../lib/mapLayers';
 
 interface MapViewProps {
   gps: GpsData | null;
@@ -41,10 +41,13 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const robotMarkerRef = useRef<L.Marker | null>(null);
+  const robotIconRef = useRef<L.DivIcon | null>(null);
+  const lastHeadingRef = useRef<number | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const pathLineRef = useRef<L.Polyline | null>(null);
   const homeBearingLineRef = useRef<L.Polyline | null>(null);
   const poiLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const poiMarkerRef = useRef<Map<string, L.Marker>>(new Map());
   const lklCircleRef = useRef<L.Circle | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
 
@@ -98,20 +101,18 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     };
   }, []);
 
-  // Create (on mount) and swap the basemap tile layer when mapType changes,
-  // preserving the current center/zoom so the map does not reset.
+  // Swap the basemap tile layer when mapType changes, preserving the current
+  // center/zoom so the map does not reset. Layers are created once and cached
+  // (see getTileLayer), so switching is instant and tiles stay cached.
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
-    const preset = MAP_LAYERS[mapType];
-    const next = L.tileLayer(preset.url, {
-      maxZoom: preset.maxZoom,
-      attribution: preset.attribution,
-    }).addTo(mapInstanceRef.current);
+    const next = getTileLayer(mapType);
 
     if (tileLayerRef.current) {
       mapInstanceRef.current.removeLayer(tileLayerRef.current);
     }
+    next.addTo(mapInstanceRef.current);
     tileLayerRef.current = next;
   }, [mapType]);
 
@@ -130,36 +131,51 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
 
     const heading = gps.heading_deg ?? 0;
-    const robotHtml = `
-      <div style="position: relative; transform: rotate(${heading}deg); transition: transform 0.2s ease-out; width: 34px; height: 34px;">
-        <div style="width: 34px; height: 34px; background: rgba(0,122,255,0.16); border: 1px solid rgba(0,122,255,0.4); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-          <div style="width: 10px; height: 10px; background: #007AFF; border-radius: 50%;"></div>
-        </div>
-        <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 7px solid #007AFF;"></div>
-      </div>
-    `;
+    const lastHeading = lastHeadingRef.current ?? null;
+    const headingChanged = lastHeading === null || Math.abs(heading - lastHeading) > 1.5;
 
-    const robotIcon = L.divIcon({
-      html: robotHtml,
-      className: 'custom-robot-pin',
-      iconSize: [34, 34],
-      iconAnchor: [17, 17],
-    });
-
-    if (!robotMarkerRef.current) {
-      robotMarkerRef.current = L.marker(latLng, { icon: robotIcon })
-        .addTo(mapInstanceRef.current)
-        .bindPopup(`
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
-            <div style="font-weight: 600; font-size: 13px;">Artemis Hexapod</div>
-            <div style="font-size: 11px; color: #666; margin-top: 2px;">Lat: ${gps.lat.toFixed(6)}<br/>Lng: ${gps.lng.toFixed(6)}</div>
-            <div style="font-size: 11px; color: #007AFF; margin-top: 4px;">Speed: ${gps.speed_mps} m/s | Alt: ${gps.alt_m}m</div>
+    // Rebuild divIcon HTML + icon only when heading changes meaningfully or on first creation
+    if (headingChanged || !robotIconRef.current) {
+      const robotHtml = `
+        <div style="position: relative; transform: rotate(${heading}deg); transition: transform 0.2s ease-out; width: 34px; height: 34px;">
+          <div style="width: 34px; height: 34px; background: rgba(0,122,255,0.16); border: 1px solid rgba(0,122,255,0.4); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 10px; height: 10px; background: #007AFF; border-radius: 50%;"></div>
           </div>
-        `);
+          <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 7px solid #007AFF;"></div>
+        </div>
+      `;
+
+      const robotIcon = L.divIcon({
+        html: robotHtml,
+        className: 'custom-robot-pin',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+
+      robotIconRef.current = robotIcon;
+
+      if (!robotMarkerRef.current) {
+        robotMarkerRef.current = L.marker(latLng, { icon: robotIcon })
+          .addTo(mapInstanceRef.current)
+          .bindPopup(`
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
+              <div style="font-weight: 600; font-size: 13px;">Artemis Hexapod</div>
+              <div style="font-size: 11px; color: #666; margin-top: 2px;">Lat: ${gps.lat.toFixed(6)}<br/>Lng: ${gps.lng.toFixed(6)}</div>
+              <div style="font-size: 11px; color: #007AFF; margin-top: 4px;">Speed: ${gps.speed_mps} m/s | Alt: ${gps.alt_m}m</div>
+            </div>
+          `);
+      } else {
+        robotMarkerRef.current.setLatLng(latLng);
+        robotMarkerRef.current.setIcon(robotIcon);
+      }
     } else {
-      robotMarkerRef.current.setLatLng(latLng);
-      robotMarkerRef.current.setIcon(robotIcon);
+      // Heading unchanged: only update position, do NOT rebuild icon or call setIcon
+      if (robotMarkerRef.current) {
+        robotMarkerRef.current.setLatLng(latLng);
+      }
     }
+
+    lastHeadingRef.current = heading;
 
     if (homePosition && homeBearingLineRef.current) {
       homeBearingLineRef.current.setLatLngs([latLng, [homePosition.lat, homePosition.lng]]);
@@ -229,10 +245,19 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
   }, [gps, lastPacketTime]);
 
-  // POI markers
+  // POI markers — reuse existing markers by id instead of clearing+recreating
   useEffect(() => {
     if (!poiLayerGroupRef.current) return;
-    poiLayerGroupRef.current.clearLayers();
+
+    const currentIds = new Set(pois.map((poi) => poi.id));
+
+    // Remove markers whose poi id is no longer present
+    poiMarkerRef.current.forEach((marker, id) => {
+      if (!currentIds.has(id)) {
+        poiLayerGroupRef.current?.removeLayer(marker);
+        poiMarkerRef.current.delete(id);
+      }
+    });
 
     pois.forEach((poi) => {
       let pinColor = '#34C759';
@@ -244,6 +269,14 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       } else if (poi.category === 'ENV_ANOMALY') {
         pinColor = '#FFCC00';
         label = 'ENV';
+      }
+
+      const existing = poiMarkerRef.current.get(poi.id);
+
+      if (existing) {
+        // Reuse marker: only update position
+        existing.setLatLng([poi.lat, poi.lng]);
+        return;
       }
 
       const poiHtml = `
@@ -276,6 +309,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       `);
 
       poiLayerGroupRef.current?.addLayer(marker);
+      poiMarkerRef.current.set(poi.id, marker);
     });
   }, [pois]);
 

@@ -50,38 +50,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   return (
     <aside className="sidebar">
-      <div
-        style={{
-          padding: '20px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          alignItems: 'center',
-        }}
-      >
+      <div className="sidebar-brand">
         <span className="artemis-logo-frame">
           <img src="/assets/artemis-logo.png" alt="Artemis" />
         </span>
-        <span
-          style={{
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif',
-            fontSize: '15px',
-            fontWeight: 600,
-            color: '#ffffff',
-            letterSpacing: '-0.02em',
-          }}
-        >
-          Artemis Ground Station
-        </span>
-        <span
-          style={{
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            fontSize: '10px',
-            color: '#8e8e93',
-          }}
-        >
-          GROUND STATION
-        </span>
+        <strong>Dashboard</strong>
       </div>
 
       <div className="sidebar-body">

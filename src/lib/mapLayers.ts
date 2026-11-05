@@ -1,3 +1,5 @@
+import L from 'leaflet';
+
 export type MapType = 'osm' | 'satellite' | 'terrain';
 
 interface MapLayerPreset {
@@ -5,6 +7,32 @@ interface MapLayerPreset {
   url: string;
   maxZoom: number;
   attribution: string;
+}
+
+// Tile-layer cache keyed by MapType. Layers are created once and reused so
+// switching basemaps is instant (tiles stay cached) and panning streams
+// tiles efficiently.
+const tileLayerCache: Partial<Record<MapType, L.TileLayer>> = {};
+
+export function getTileLayer(mapType: MapType): L.TileLayer {
+  let layer = tileLayerCache[mapType];
+  if (!layer) {
+    const preset = MAP_LAYERS[mapType];
+    const tileLayerOptions = {
+      detectRetina: true,
+      reuseTiles: true,
+      updateWhenIdle: false,
+      updateInterval: 150,
+      maxNativeZoom: preset.maxZoom,
+    };
+    layer = L.tileLayer(preset.url, {
+      maxZoom: 24,
+      attribution: preset.attribution,
+      ...tileLayerOptions,
+    });
+    tileLayerCache[mapType] = layer;
+  }
+  return layer;
 }
 
 // Switchable basemap presets. Satellite/terrain options give higher
