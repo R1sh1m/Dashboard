@@ -14,11 +14,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
+import { MAP_LAYERS, type MapType } from '../lib/mapLayers';
+
 interface MapViewProps {
   gps: GpsData | null;
   pois: PointOfInterest[];
   homePosition: { lat: number; lng: number } | null;
   lastPacketTime: number | null;
+  mapType?: MapType;
 }
 
 export interface MapViewHandle {
@@ -33,6 +36,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   pois,
   homePosition,
   lastPacketTime,
+  mapType = 'osm',
 }, ref) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -42,6 +46,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const homeBearingLineRef = useRef<L.Polyline | null>(null);
   const poiLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const lklCircleRef = useRef<L.Circle | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
 
   const initialLatRef = useRef(gps?.lat ?? 12.971598);
   const initialLngRef = useRef(gps?.lng ?? 77.594566);
@@ -55,11 +60,6 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       zoomControl: false,
       attributionControl: false,
     });
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors © CARTO',
-    }).addTo(map);
 
     const ro = new ResizeObserver(() => {
       map.invalidateSize();
@@ -97,6 +97,23 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       mapInstanceRef.current = null;
     };
   }, []);
+
+  // Create (on mount) and swap the basemap tile layer when mapType changes,
+  // preserving the current center/zoom so the map does not reset.
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const preset = MAP_LAYERS[mapType];
+    const next = L.tileLayer(preset.url, {
+      maxZoom: preset.maxZoom,
+      attribution: preset.attribution,
+    }).addTo(mapInstanceRef.current);
+
+    if (tileLayerRef.current) {
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
+    }
+    tileLayerRef.current = next;
+  }, [mapType]);
 
   // Robot marker + breadcrumb path
   useEffect(() => {

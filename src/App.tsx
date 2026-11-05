@@ -9,12 +9,25 @@ import { serialService, type SerialConnectionStatus } from './services/webSerial
 import { simulatorService } from './services/simulator';
 import {
   AlertTriangle,
+  Activity,
+  Bookmark,
+  Car,
+  ChevronRight,
+  Compass,
+  LocateFixed,
+  MapPinned,
+  Menu,
   Plus,
   Minus,
   Crosshair,
   Navigation2,
   Layers,
+  Radio,
+  Route,
+  Search,
+  Settings2,
 } from 'lucide-react';
+import { MAP_TYPE_ORDER, type MapType } from './lib/mapLayers';
 
 
 type SubsystemTab = 'bot' | 'power' | 'motors' | 'env' | 'radar' | 'link' | 'logs';
@@ -33,7 +46,16 @@ export function App() {
 
   const [activeTab, setActiveTab] = useState<SubsystemTab>('bot');
   const [isSensorSheetOpen, setIsSensorSheetOpen] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState('All');
   const [now, setNow] = useState<number>(0);
+
+  // Persisted map type (dark → satellite → osm → terrain)
+  const [mapType, setMapType] = useState<MapType>(() => {
+    if (typeof window === 'undefined') return 'dark';
+    const stored = localStorage.getItem('artemis-map-type');
+    return (stored === 'dark' || !stored ? 'osm' : stored) as MapType;
+  });
 
   const mapRef = useRef<MapViewHandle>(null);
 
@@ -226,9 +248,11 @@ export function App() {
 
   const botState = telemetry?.bot_status.state ?? 'STANDBY';
   const isEStop = botState === 'EMERGENCY_STOP';
+  const gpsStatus = telemetry?.gps.valid ? 'Live GPS' : 'Last known';
+  const mapLabel = mapType === 'osm' ? 'Explore' : mapType.charAt(0).toUpperCase() + mapType.slice(1);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans">
+    <div className="maps-shell relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans">
       {/* 1. Full-Screen Edge-to-Edge Map (dark tiles, sits behind chrome) */}
       <div className="map-full">
         <MapView
@@ -237,7 +261,106 @@ export function App() {
           pois={pois}
           homePosition={homePosition}
           lastPacketTime={lastPacketTime}
+          mapType={mapType}
         />
+      </div>
+
+      <a className="skip-link" href="#map-main">Skip to map</a>
+      <main id="map-main" className="maps-ui" aria-label="Artemis ground station map">
+        <header className="maps-topbar">
+          <div className="brand-lockup">
+            <button className="icon-button mobile-menu" aria-label="Open navigation"><Menu size={18} /></button>
+            <img src="/assets/artemis-logo.png" alt="Artemis" />
+            <div><strong>Artemis</strong><span>Ground Station</span></div>
+          </div>
+          <nav className="maps-nav" aria-label="Primary">
+            <button className="nav-link active">Explore</button>
+            <button className="nav-link" onClick={() => setIsSensorSheetOpen(true)}>Telemetry</button>
+            <button className="nav-link" onClick={() => setIsPoiModalOpen(true)}>Mark POI</button>
+          </nav>
+          <div className="top-status">
+            <span className={`status-dot ${isEStop ? 'critical' : ''}`} />
+            <span>{isEStop ? 'Emergency stop' : isSimulating ? 'Simulation live' : serialStatus.toLowerCase()}</span>
+            <button className="icon-button" onClick={() => setIsSensorSheetOpen(true)} aria-label="Open ground station controls"><Settings2 size={17} /></button>
+          </div>
+        </header>
+
+        <section className="explore-sheet" aria-label="Map search and places">
+          <div className="sheet-handle" aria-hidden="true" />
+          <div className="search-field">
+            <Search size={18} aria-hidden="true" />
+            <input type="search" aria-label="Search ground station map" placeholder="Search Artemis map" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+            {searchQuery && <button className="clear-search" onClick={() => setSearchQuery('')} aria-label="Clear search">×</button>}
+            <button className="voice-button" aria-label="Search by voice"><Radio size={16} /></button>
+          </div>
+          <div className="category-row" role="list" aria-label="Map categories">
+            {[
+              ['All', Compass],
+              ['POIs', MapPinned],
+              ['Telemetry', Activity],
+              ['Route', Route],
+              ['Saved', Bookmark],
+            ].map(([label, Icon]) => (
+              <button key={label as string} className={`category-pill ${activeCategory === label ? 'selected' : ''}`} onClick={() => setActiveCategory(label as string)} role="listitem">
+                <Icon size={16} /><span>{label as string}</span>
+              </button>
+            ))}
+          </div>
+          <div className="places-content">
+            {searchQuery ? (
+              <div className="empty-search"><Search size={20} /><strong>Search around Artemis</strong><span>Inspect nearby telemetry and marked points on the map.</span></div>
+            ) : (
+              <>
+                <div className="sheet-heading">
+                  <div><span className="eyebrow">Live map</span><h1>{activeCategory === 'All' ? 'Explore Artemis' : activeCategory}</h1></div>
+                  <button className="text-button" onClick={() => setIsSensorSheetOpen(true)}>View all <ChevronRight size={14} /></button>
+                </div>
+                <div className="place-list">
+                  <button className="place-card selected-place" onClick={() => mapRef.current?.recenterRobot()}>
+                    <span className="place-icon blue"><LocateFixed size={18} /></span>
+                    <span className="place-copy"><strong>Artemis Hexapod</strong><small>{gpsStatus} · {curLat.toFixed(5)}, {curLng.toFixed(5)}</small></span>
+                    <span className="place-meta">{telemetry?.gps.speed_mps?.toFixed(1) ?? '0.0'} m/s</span>
+                  </button>
+                  <button className="place-card" onClick={() => mapRef.current?.recenterHome()}>
+                    <span className="place-icon green"><MapPinned size={18} /></span>
+                    <span className="place-copy"><strong>Home Base Station</strong><small>LoRa link base · {homePosition ? 'Origin latched' : 'Waiting for GPS'}</small></span>
+                    <ChevronRight size={17} className="place-arrow" />
+                  </button>
+                  <button className="place-card" onClick={() => setIsSensorSheetOpen(true)}>
+                    <span className="place-icon orange"><Activity size={18} /></span>
+                    <span className="place-copy"><strong>System telemetry</strong><small>{telemetry ? 'All sensor streams available' : 'Waiting for telemetry'}</small></span>
+                    <ChevronRight size={17} className="place-arrow" />
+                  </button>
+                </div>
+                <div className="quick-actions">
+                  <button onClick={() => setIsSensorSheetOpen(true)}><Car size={16} /> Directions</button>
+                  <button onClick={() => setIsPoiModalOpen(true)}><Bookmark size={16} /> Save location</button>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+
+        <div className="map-controls" aria-label="Map controls">
+          <button className="map-control" onClick={() => setMapType((prev) => { const next = MAP_TYPE_ORDER[(MAP_TYPE_ORDER.indexOf(prev) + 1) % MAP_TYPE_ORDER.length]; localStorage.setItem('artemis-map-type', next); return next; })} aria-label={`Change map style, currently ${mapLabel}`}><Layers size={18} /></button>
+          <button className="map-control" onClick={() => mapRef.current?.recenterRobot()} aria-label="Center on rover"><Crosshair size={18} /></button>
+          <button className="map-control" onClick={() => mapRef.current?.recenterHome()} aria-label="Center on home base"><Navigation2 size={18} /></button>
+        </div>
+        <div className="zoom-controls" aria-label="Zoom controls">
+          <button className="map-control" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in"><Plus size={18} /></button>
+          <button className="map-control" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out"><Minus size={18} /></button>
+        </div>
+      </main>
+
+      <div className="coordinate-pill" aria-live="polite">
+        <span className="status-dot" />
+        <strong>{gpsStatus}</strong>
+        <span>{curLat.toFixed(5)}, {curLng.toFixed(5)}</span>
+      </div>
+      <div className="telemetry-glance" aria-label="Telemetry summary">
+        <div><span>Battery</span><strong>{telemetry?.power.percent ?? '--'}%</strong></div>
+        <div><span>Mode</span><strong>{botState.replace('_', ' ')}</strong></div>
+        <div><span>Map</span><strong>{mapLabel}</strong></div>
       </div>
 
       {/* 2. Persistent left sidebar (Apple Maps style) — logo + state + link */}
@@ -252,12 +375,16 @@ export function App() {
       <Header
         onOpenMarkPoi={() => setIsPoiModalOpen(true)}
         onToggleLayer={() => {
-          /* layer toggle placeholder */
+          setMapType((prev) => {
+            const next = MAP_TYPE_ORDER[(MAP_TYPE_ORDER.indexOf(prev) + 1) % MAP_TYPE_ORDER.length];
+            localStorage.setItem('artemis-map-type', next);
+            return next;
+          });
         }}
       />
 
       {/* 4. Bottom-right floating cluster (zoom / recenter / layer) */}
-      <div className="absolute bottom-4 right-4 z-50 pointer-events-auto flex flex-col gap-2">
+      <div className="legacy-map-controls absolute bottom-4 right-4 z-50 pointer-events-auto flex flex-col gap-2">
         <div className="flex flex-col rounded-xl bg-white/10 border border-white/20 overflow-hidden shadow-lg backdrop-blur-md">
           <button
             onClick={() => mapRef.current?.zoomIn()}
@@ -289,15 +416,22 @@ export function App() {
           <Navigation2 className="w-4 h-4" />
         </button>
         <button
+          onClick={() => {
+            setMapType((prev) => {
+              const next = MAP_TYPE_ORDER[(MAP_TYPE_ORDER.indexOf(prev) + 1) % MAP_TYPE_ORDER.length];
+              localStorage.setItem('artemis-map-type', next);
+              return next;
+            });
+          }}
           className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-neutral-200 hover:bg-white/10 active:scale-95 transition-all shadow-sm"
-          title="Map Layer"
+          title={`Map layer: ${mapType.charAt(0).toUpperCase() + mapType.slice(1)}`}
         >
           <Layers className="w-4 h-4" />
         </button>
       </div>
 
       {/* 5. Bottom-center GPS pill */}
-      <div className="absolute bottom-4 left-[280px] z-50 pointer-events-auto">
+      <div className="legacy-gps absolute bottom-4 left-[280px] z-50 pointer-events-auto">
         <div className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-md text-[12px] font-mono text-neutral-200 shadow-lg flex items-center gap-4">
           <span>LAT: <strong className="text-[#30d158]">{curLat.toFixed(6)}</strong></span>
           <span>LNG: <strong className="text-[#30d158]">{curLng.toFixed(6)}</strong></span>
