@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings } from 'lucide-react';
+import { Bookmark, Home, Settings } from 'lucide-react';
 
 type SerialStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
 
@@ -8,6 +8,8 @@ interface LeftSidebarProps {
   isEStop: boolean;
   serialStatus: SerialStatus;
   onOpenSensors: () => void;
+  onHome: () => void;
+  onSavePoi: () => void;
 }
 
 // Apple-style pill colors for ROBOT state
@@ -33,6 +35,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   isEStop,
   serialStatus,
   onOpenSensors,
+  onHome,
+  onSavePoi,
 }) => {
   const robotStyle = ROBOT_PILL[botState] ?? ROBOT_PILL.STANDBY;
   const effectiveDot = isEStop
@@ -55,15 +59,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           alignItems: 'center',
         }}
       >
-        <img
-          src="/assets/artemis-logo.png"
-          alt="Artemis"
-          style={{
-            height: 28,
-            width: 'auto',
-            display: 'block',
-          }}
-        />
+        <span className="artemis-logo-frame">
+          <img src="/assets/artemis-logo.png" alt="Artemis" />
+        </span>
         <span
           style={{
             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif',
@@ -73,7 +71,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             letterSpacing: '-0.02em',
           }}
         >
-          Artemis Dashboard
+          Artemis Ground Station
         </span>
         <span
           style={{
@@ -87,6 +85,20 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       </div>
 
       <div className="sidebar-body">
+        <div className="sidebar-navigation" aria-label="Ground station navigation">
+          <button className="sidebar-nav-item active" onClick={onHome}>
+            <Home size={18} />
+            <span>Home</span>
+          </button>
+          <button className="sidebar-nav-item" onClick={onSavePoi}>
+            <Bookmark size={18} />
+            <span>Saved locations</span>
+          </button>
+          <button className="sidebar-nav-item" onClick={onOpenSensors}>
+            <Settings size={18} />
+            <span>Telemetry</span>
+          </button>
+        </div>
         <div className="sidebar-row">
           <span
             style={{
@@ -137,15 +149,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </span>
         </div>
 
-        <div className="h-12 flex items-end">
-          <button
-            onClick={onOpenSensors}
-            className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-[11px] font-medium text-neutral-300 flex items-center justify-center gap-2 hover:bg-white/10 hover:text-white transition-colors active:scale-97"
-          >
-            <Settings className="w-4 h-4" />
-            Sensors
-          </button>
-        </div>
       </div>
 
       <div className="sidebar-footer">

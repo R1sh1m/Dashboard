@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Zap, Square, Play, AlertOctagon } from 'lucide-react';
+import { X, Zap, AlertOctagon } from 'lucide-react';
 import type { TelemetryPacket, LogEntry } from '../types/telemetry';
 import type { SerialConnectionStatus } from '../services/webSerial';
 import { BotStatusCard } from './BotStatusCard';
@@ -31,11 +31,9 @@ interface SensorSheetProps {
   logs: LogEntry[];
   serialStatus: SerialConnectionStatus;
   baudRate: number;
-  isSimulating: boolean;
   setBaudRate: (baud: number) => void;
   onConnectSerial: () => void;
   onDisconnectSerial: () => void;
-  onToggleSimulator: () => void;
   onTriggerEStop: () => void;
 }
 
@@ -48,11 +46,9 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
   logs,
   serialStatus,
   baudRate,
-  isSimulating,
   setBaudRate,
   onConnectSerial,
   onDisconnectSerial,
-  onToggleSimulator,
   onTriggerEStop,
 }) => {
   if (!isOpen) return null;
@@ -152,18 +148,6 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={onToggleSimulator}
-              className={`flex-1 py-1.5 rounded-lg text-[12px] font-medium border flex items-center justify-center gap-1.5 transition-all ${
-                isSimulating
-                  ? 'bg-[#bf5af2]/15 border-[#bf5af2]/35 text-[#bf5af2]'
-                  : 'bg-white/5 border-white/10 text-neutral-400 hover:bg-white/10'
-              }`}
-              title="Toggle built-in mock telemetry simulator"
-            >
-              {isSimulating ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-              <span>{isSimulating ? 'Stop Sim' : 'Simulate'}</span>
-            </button>
             <button
               onClick={onTriggerEStop}
               className="px-3 py-1.5 bg-[#ff453a] text-white text-[12px] font-medium shadow-lg shadow-[#ff453a]/30 hover:bg-[#c0392b] transition-colors flex items-center gap-1.5"
