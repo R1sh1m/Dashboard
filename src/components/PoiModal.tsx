@@ -108,7 +108,7 @@ export const PoiModal: React.FC<PoiModalProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Biological presence / Gas spike"
-              className="bg-black/30 border border-white/15 rounded-lg px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-[#2997ff]"
+              className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-[#007AFF]"
             />
           </div>
 
@@ -119,7 +119,7 @@ export const PoiModal: React.FC<PoiModalProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Observation notes, terrain details..."
-              className="bg-black/30 border border-white/15 rounded-lg px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-[#2997ff] resize-none"
+              className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-[#007AFF] resize-none"
             />
           </div>
 

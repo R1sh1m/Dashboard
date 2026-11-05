@@ -1,17 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { MapView, type MapViewHandle } from './components/MapView';
+import { LeftSidebar } from './components/LeftSidebar';
 import { Header } from './components/Header';
-import { MapView } from './components/MapView';
-import { BotStatusCard } from './components/BotStatusCard';
-import { PowerStatusCard } from './components/PowerStatusCard';
-import { MotorMatrixCard } from './components/MotorMatrixCard';
-import { EnvironmentalCard } from './components/EnvironmentalCard';
-import { RadarCard } from './components/RadarCard';
-import { WirelessLinkCard } from './components/WirelessLinkCard';
-import { LogTerminal } from './components/LogTerminal';
+import { SensorSheet } from './components/SensorSheet';
 import { PoiModal } from './components/PoiModal';
 import type { TelemetryPacket, PointOfInterest, LogEntry } from './types/telemetry';
 import { serialService, type SerialConnectionStatus } from './services/webSerial';
 import { simulatorService } from './services/simulator';
+import {
+  AlertTriangle,
+  Plus,
+  Minus,
+  Crosshair,
+  Navigation2,
+  Layers,
+} from 'lucide-react';
+
+
+type SubsystemTab = 'bot' | 'power' | 'motors' | 'env' | 'radar' | 'link' | 'logs';
 
 export function App() {
   const [telemetry, setTelemetry] = useState<TelemetryPacket | null>(null);
@@ -25,7 +31,20 @@ export function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isPoiModalOpen, setIsPoiModalOpen] = useState<boolean>(false);
 
-  const addLog = (level: 'INFO' | 'WARN' | 'ERR' | 'RAW', subsystem: string, message: string) => {
+  const [activeTab, setActiveTab] = useState<SubsystemTab>('bot');
+  const [isSensorSheetOpen, setIsSensorSheetOpen] = useState<boolean>(false);
+  const [now, setNow] = useState<number>(0);
+
+  const mapRef = useRef<MapViewHandle>(null);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const addLog = useCallback((level: 'INFO' | 'WARN' | 'ERR' | 'RAW', subsystem: string, message: string) => {
     setLogs((prev) => {
       const entry: LogEntry = {
         id: `log_${Date.now()}_${Math.random()}`,
@@ -34,18 +53,21 @@ export function App() {
         subsystem,
         message,
       };
-      return [...prev.slice(-300), entry];
+      return [...prev.slice(-999), entry];
     });
-  };
+  }, []);
 
-  const handleIncomingPacket = (packet: TelemetryPacket) => {
+  const handleIncomingPacket = useCallback((packet: TelemetryPacket) => {
     setTelemetry(packet);
     setLastPacketTime(Date.now());
 
-    if (!homePosition && packet.gps.valid && packet.gps.lat && packet.gps.lng) {
-      setHomePosition({ lat: packet.gps.lat, lng: packet.gps.lng });
-      addLog('INFO', 'GPS', `Home Base Origin latched at ${packet.gps.lat.toFixed(6)}, ${packet.gps.lng.toFixed(6)}`);
-    }
+    setHomePosition((currentHomePosition) => {
+      if (!currentHomePosition && packet.gps.valid && packet.gps.lat && packet.gps.lng) {
+        addLog('INFO', 'GPS', `Home Base Origin latched at ${packet.gps.lat.toFixed(6)}, ${packet.gps.lng.toFixed(6)}`);
+        return { lat: packet.gps.lat, lng: packet.gps.lng };
+      }
+      return currentHomePosition;
+    });
 
     if (packet.radar.human_detected && packet.gps.valid) {
       setPois((prev) => {
@@ -93,7 +115,7 @@ export function App() {
               notes: `BME688 Gas: ${packet.env.gas_resistance_kohm} kΩ | IAQ: ${packet.env.iaq}`,
               timestamp: Date.now(),
               meta: {
-                gas_kohm: packet.env.gas_resistance_kohm,
+                gas_kohm: packet.radar.energy,
                 iaq: packet.env.iaq,
               },
             },
@@ -102,7 +124,7 @@ export function App() {
         return prev;
       });
     }
-  };
+  }, [addLog]);
 
   useEffect(() => {
     serialService.setCallbacks({
@@ -125,7 +147,12 @@ export function App() {
         }
       },
     });
-  }, [baudRate, homePosition]);
+  }, [baudRate, addLog, handleIncomingPacket]);
+
+  const handleIncomingPacketRef = useRef(handleIncomingPacket);
+  useEffect(() => {
+    handleIncomingPacketRef.current = handleIncomingPacket;
+  });
 
   const handleConnectSerial = async () => {
     serialService.setBaudRate(baudRate);
@@ -178,66 +205,140 @@ export function App() {
     addLog('INFO', 'POI', `Operator marked POI: ${newPoi.title} at [${newPoi.lat.toFixed(5)}, ${newPoi.lng.toFixed(5)}]`);
   };
 
+  // Auto-start simulator for immediate out-of-the-box usability
   useEffect(() => {
-    handleToggleSimulator();
+    const timer = setTimeout(() => {
+      setIsSimulating(true);
+      addLog('INFO', 'SIM', 'Telemetry Simulator Started (250ms cadence)');
+      simulatorService.start((packet) => {
+        handleIncomingPacket(packet);
+      }, 250);
+    }, 0);
+
     return () => {
+      clearTimeout(timer);
       simulatorService.stop();
     };
-  }, []);
+  }, [addLog, handleIncomingPacket]);
 
   const curLat = telemetry?.gps.lat ?? 12.971598;
   const curLng = telemetry?.gps.lng ?? 77.594566;
 
+  const botState = telemetry?.bot_status.state ?? 'STANDBY';
+  const isEStop = botState === 'EMERGENCY_STOP';
+
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#121214] text-[#f5f5f7] overflow-hidden select-none">
-      <Header
-        telemetry={telemetry}
+    <div className="relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans">
+      {/* 1. Full-Screen Edge-to-Edge Map (dark tiles, sits behind chrome) */}
+      <div className="map-full">
+        <MapView
+          ref={mapRef}
+          gps={telemetry?.gps ?? null}
+          pois={pois}
+          homePosition={homePosition}
+          lastPacketTime={lastPacketTime}
+        />
+      </div>
+
+      {/* 2. Persistent left sidebar (Apple Maps style) — logo + state + link */}
+      <LeftSidebar
+        botState={botState}
+        isEStop={isEStop}
         serialStatus={serialStatus}
-        baudRate={baudRate}
-        onBaudChange={setBaudRate}
-        onConnectSerial={handleConnectSerial}
-        onDisconnectSerial={handleDisconnectSerial}
-        isSimulating={isSimulating}
-        onToggleSimulator={handleToggleSimulator}
-        onTriggerEStop={handleTriggerEStop}
-        onOpenMarkPoi={() => setIsPoiModalOpen(true)}
+        onOpenSensors={() => setIsSensorSheetOpen(true)}
       />
 
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 overflow-hidden">
-        <section className="lg:col-span-7 flex flex-col gap-3 h-full overflow-hidden">
-          <div className="flex-1 min-h-[320px] rounded-xl overflow-hidden relative shadow-2xl">
-            <MapView
-              gps={telemetry?.gps ?? null}
-              pois={pois}
-              homePosition={homePosition}
-              lastPacketTime={lastPacketTime}
-              onMarkPoiClick={() => setIsPoiModalOpen(true)}
-            />
-          </div>
+      {/* 3. Slim dark top header — search pill + actions */}
+      <Header
+        onOpenMarkPoi={() => setIsPoiModalOpen(true)}
+        onToggleLayer={() => {
+          /* layer toggle placeholder */
+        }}
+      />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 shrink-0">
-            <RadarCard radar={telemetry?.radar ?? null} />
-            <EnvironmentalCard env={telemetry?.env ?? null} />
-            <WirelessLinkCard link={telemetry?.link ?? null} seq={telemetry?.seq ?? 0} />
-          </div>
-        </section>
+      {/* 4. Bottom-right floating cluster (zoom / recenter / layer) */}
+      <div className="absolute bottom-4 right-4 z-50 pointer-events-auto flex flex-col gap-2">
+        <div className="flex flex-col rounded-xl bg-white/10 border border-white/20 overflow-hidden shadow-lg backdrop-blur-md">
+          <button
+            onClick={() => mapRef.current?.zoomIn()}
+            className="w-10 h-10 flex items-center justify-center text-neutral-200 border-b border-white/20 hover:bg-white/10 active:scale-95 transition-all"
+            title="Zoom In"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => mapRef.current?.zoomOut()}
+            className="w-10 h-10 flex items-center justify-center text-neutral-200 hover:bg-white/10 active:scale-95 transition-all"
+            title="Zoom Out"
+          >
+            <Minus className="w-4 h-4" />
+          </button>
+        </div>
+        <button
+          onClick={() => mapRef.current?.recenterRobot()}
+          className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-[#2997ff] hover:bg-white/10 active:scale-95 transition-all shadow-sm"
+          title="Recenter to Robot"
+        >
+          <Crosshair className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => mapRef.current?.recenterHome()}
+          className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-[#30d158] hover:bg-white/10 active:scale-95 transition-all shadow-sm"
+          title="Recenter to Home Base"
+        >
+          <Navigation2 className="w-4 h-4" />
+        </button>
+        <button
+          className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-neutral-200 hover:bg-white/10 active:scale-95 transition-all shadow-sm"
+          title="Map Layer"
+        >
+          <Layers className="w-4 h-4" />
+        </button>
+      </div>
 
-        <section className="lg:col-span-5 flex flex-col gap-2.5 h-full overflow-hidden">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
-            <BotStatusCard status={telemetry?.bot_status ?? null} />
-            <PowerStatusCard power={telemetry?.power ?? null} />
-          </div>
+      {/* 5. Bottom-center GPS pill */}
+      <div className="absolute bottom-4 left-[280px] z-50 pointer-events-auto">
+        <div className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-md text-[12px] font-mono text-neutral-200 shadow-lg flex items-center gap-4">
+          <span>LAT: <strong className="text-[#30d158]">{curLat.toFixed(6)}</strong></span>
+          <span>LNG: <strong className="text-[#30d158]">{curLng.toFixed(6)}</strong></span>
+        </div>
+      </div>
 
-          <div className="shrink-0">
-            <MotorMatrixCard motors={telemetry?.motors ?? null} />
+      {/* 6. Last Known Location (LKL) banner */}
+      {(() => {
+        const isSignalLost = lastPacketTime !== null && now - lastPacketTime > 4000;
+        const isGpsInvalid = !telemetry?.gps?.valid;
+        if (!isSignalLost && !isGpsInvalid) return null;
+        return (
+          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-60 pointer-events-auto px-4 py-2 rounded-full bg-[#ff453a]/95 text-white text-[12px] font-medium flex items-center gap-2 shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md border border-white/20 animate-pulse">
+            <AlertTriangle className="w-4 h-4 text-white" />
+            <span>LAST KNOWN LOCATION (LKL) LATCHED</span>
+            <span className="text-[11px] opacity-90 font-mono">
+              {lastPacketTime ? `${Math.round((now - lastPacketTime) / 1000)}s since contact` : 'NO SIGNAL'}
+            </span>
           </div>
+        );
+      })()}
 
-          <div className="flex-1 min-h-[160px] overflow-hidden">
-            <LogTerminal logs={logs} onClearLogs={() => setLogs([])} />
-          </div>
-        </section>
-      </main>
+      {/* 7. Right-side sensor sheet (frosted glass, opens like Apple Maps info panel) */}
+      <SensorSheet
+        isOpen={isSensorSheetOpen}
+        onClose={() => setIsSensorSheetOpen(false)}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        telemetry={telemetry}
+        logs={logs}
+        serialStatus={serialStatus}
+        baudRate={baudRate}
+        isSimulating={isSimulating}
+        setBaudRate={setBaudRate}
+        onConnectSerial={handleConnectSerial}
+        onDisconnectSerial={handleDisconnectSerial}
+        onToggleSimulator={handleToggleSimulator}
+        onTriggerEStop={handleTriggerEStop}
+      />
 
+      {/* POI Marker Modal */}
       <PoiModal
         isOpen={isPoiModalOpen}
         onClose={() => setIsPoiModalOpen(false)}

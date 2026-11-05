@@ -35,3 +35,19 @@ DESIGN.md
 context/
 opencode.json
 opencode.jsonc
+
+# Tracked project guidance
+!.agents/
+!.agents/skills/
+!.agents/skills/apple-design/
+!.agents/skills/apple-design/SKILL.md
+!AGENTS.md
+!Docs/
+!Docs/DESIGN.md
+
+# Local assets & media (keep Docs/ tracked)
+public/assets/
+*.png
+*.jpeg
+*.jpg
+*.pdf

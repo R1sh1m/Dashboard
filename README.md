@@ -30,3 +30,14 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Design Standards
+
+The dashboard follows Apple's Human Interface Guidelines (HIG) and Apple Maps UI/UX conventions, translated to this React + Leaflet web stack:
+
+- **`Docs/DESIGN.md`** — Apple HIG design standards (eight design principles, layout/spacing, SF Pro typography, SF Symbols, Liquid Glass–style materials, accessibility, location privacy, pre-landing review checklist).
+- **`Docs/APPLE_MAPS.md`** — Apple Maps UI/UX component reference (bottom-sheet search card, category pills, place card, map control stack, MapKit / MapKit JS / Maps Server API notes).
+- **`AGENTS.md` §4** — autonomous agents review UI changes against these standards before landing.
+- **`.github/instructions/`** — file-specific guidance automatically applies to UI, map, and documentation changes.
+
+All UI changes should be checked against `Docs/DESIGN.md` §9 (review checklist) and `Docs/APPLE_MAPS.md` for map-related work.

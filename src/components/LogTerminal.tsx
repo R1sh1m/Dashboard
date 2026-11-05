@@ -91,7 +91,7 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="bg-black/30 border border-white/10 rounded-md pl-6 pr-2 py-0.5 text-[10px] text-white placeholder-neutral-500 focus:outline-none focus:border-[#2997ff] w-20 md:w-28"
+              className="bg-black/30 border border-white/10 rounded-lg pl-6 pr-2 py-0.5 text-[10px] text-white placeholder-neutral-500 focus:outline-none focus:border-[#007AFF] w-20 md:w-28"
             />
           </div>
 
@@ -138,7 +138,7 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
               <div key={entry.id} className="flex items-start gap-2 hover:bg-white/5 px-1 py-0.5 rounded">
                 <span className="text-neutral-500 select-none text-[10px]">{timeStr}</span>
                 <span
-                  className="font-bold text-[10px] px-1 rounded select-none uppercase"
+                  className="font-bold text-[10px] px-1 rounded-md select-none uppercase"
                   style={{
                     color: getLevelColor(entry.level),
                     backgroundColor: `${getLevelColor(entry.level)}18`,

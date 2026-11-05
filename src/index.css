@@ -158,7 +158,7 @@ body {
 .leaflet-container {
   width: 100%;
   height: 100%;
-  background: #18181b !important;
+  background: #000 !important;
   font-family: var(--font-stack) !important;
 }
 
@@ -415,4 +415,204 @@ body {
 }
 @keyframes ping {
   75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+/* ===== Apple Maps Dark Theme — Sidebar & Right Sheet ===== */
+
+/* Persistent left sidebar (frosted glass) */
+.sidebar {
+  position: fixed;
+  inset-y: 0;
+  left: 0;
+  width: 260px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(18, 18, 20, 0.70);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  user-select: none;
+}
+
+.sidebar-brand {
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0066cc, #2997ff);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 25px rgba(0, 102, 204, 0.35);
+}
+
+.sidebar-brand-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.sidebar-brand-sub {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #a3a3a3;
+}
+
+.sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #a3a3a3;
+  cursor: default;
+  user-select: none;
+}
+
+.sidebar-row .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-footer {
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Right sensor sheet (frosted glass, Apple Maps style) */
+.sheet {
+  position: fixed;
+  inset-y: 0;
+  right: 0;
+  width: 480px;
+  max-width: calc(100vw - 24px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(20, 20, 22, 0.72);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.35);
+  user-select: none;
+}
+
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.sheet-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+}
+
+.sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.sheet-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Slim dark top header */
+.slim-header {
+  position: fixed;
+  top: 0;
+  left: 260px;
+  right: 0;
+  height: 52px;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px 0 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 18, 20, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  flex-shrink: 0;
+}
+
+.search-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #c7c7c7;
+  font-size: 13px;
+  min-width: 250px;
+}
+
+.search-pill span:first-child {
+  color: #8e8e93;
+  font-size: 12px;
+}
+
+/* Ensure map fills the whole screen behind chrome */
+.map-full {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
 }
