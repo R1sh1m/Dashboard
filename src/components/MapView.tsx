@@ -20,6 +20,9 @@ interface MapViewProps {
   gps: GpsData | null;
   pois: PointOfInterest[];
   homePosition: { lat: number; lng: number } | null;
+  draftPosition: { lat: number; lng: number } | null;
+  draftCategory: PointOfInterest['category'];
+  onDraftPositionChange: (position: { lat: number; lng: number }) => void;
   lastPacketTime: number | null;
   mapType?: MapType;
 }
@@ -37,6 +40,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   gps,
   pois,
   homePosition,
+  draftPosition,
+  draftCategory,
+  onDraftPositionChange,
   lastPacketTime,
   mapType = 'osm',
 }, ref) => {
@@ -50,6 +56,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const homeBearingLineRef = useRef<L.Polyline | null>(null);
   const poiLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const poiMarkerRef = useRef<Map<string, L.Marker>>(new Map());
+  const draftMarkerRef = useRef<L.Marker | null>(null);
   const lklCircleRef = useRef<L.Circle | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
 
@@ -192,7 +199,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     const homeHtml = `
       <div style="position: relative; width: 30px; height: 30px;">
         <div style="width: 30px; height: 30px; background: rgba(52,199,89,0.16); border: 1px solid rgba(52,199,89,0.4); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-          <div style="width: 9px; height: 9px; background: #34C759; border-radius: 50%;"></div>
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+            <path d="M5 10.5 12 4l7 6.5v7a1 1 0 0 1-1 1h-3.5v-5h-5v5H6a1 1 0 0 1-1-1z" fill="none" stroke="#34C759" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
         </div>
       </div>
     `;
@@ -217,6 +226,51 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       homeMarkerRef.current.setLatLng([homePosition.lat, homePosition.lng]);
     }
   }, [homePosition]);
+
+  // Temporary draggable marker used to confirm a new POI location.
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    if (!draftPosition) {
+      draftMarkerRef.current?.remove();
+      draftMarkerRef.current = null;
+      return;
+    }
+
+    const draftColor = draftCategory === 'HUMAN_RADAR'
+      ? '#FF3B30'
+      : draftCategory === 'ENV_ANOMALY'
+        ? '#FFCC00'
+        : draftCategory === 'BASE_HOME'
+          ? '#0A84FF'
+          : '#30D158';
+    const houseIcon = draftCategory === 'BASE_HOME'
+      ? '<path d="M5 10.5 12 4l7 6.5v7a1 1 0 0 1-1 1h-3.5v-5h-5v5H6a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>'
+      : '<circle cx="12" cy="12" r="3.5" fill="#fff"/>';
+    const draftIcon = L.divIcon({
+      html: `<div class="draft-poi-pin" style="--draft-poi-color:${draftColor}"><span class="draft-poi-pin-head"><svg viewBox="0 0 24 24" aria-hidden="true">${houseIcon}</svg></span><span class="draft-poi-pin-tip"></span></div>`,
+      className: 'draft-poi-marker',
+      iconSize: [42, 52],
+      iconAnchor: [21, 46],
+    });
+
+    if (!draftMarkerRef.current) {
+      draftMarkerRef.current = L.marker([draftPosition.lat, draftPosition.lng], {
+        icon: draftIcon,
+        draggable: true,
+        zIndexOffset: 1000,
+      }).addTo(mapInstanceRef.current);
+      draftMarkerRef.current.on('dragend', () => {
+        const position = draftMarkerRef.current?.getLatLng();
+        if (position) onDraftPositionChange({ lat: position.lat, lng: position.lng });
+      });
+      mapInstanceRef.current.panTo([draftPosition.lat, draftPosition.lng], { animate: false });
+      mapInstanceRef.current.panBy([-240, 0], { animate: false });
+    } else {
+      draftMarkerRef.current.setLatLng([draftPosition.lat, draftPosition.lng]);
+      draftMarkerRef.current.setIcon(draftIcon);
+    }
+  }, [draftPosition, draftCategory, onDraftPositionChange]);
 
   // LKL circle (map layer); HTML banner lives in App
   useEffect(() => {
@@ -252,7 +306,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   useEffect(() => {
     if (!poiLayerGroupRef.current) return;
 
-    const currentIds = new Set(pois.map((poi) => poi.id));
+    const visiblePois = pois.filter((poi) => poi.category !== 'BASE_HOME');
+    const currentIds = new Set(visiblePois.map((poi) => poi.id));
 
     // Remove markers whose poi id is no longer present
     poiMarkerRef.current.forEach((marker, id) => {
@@ -262,7 +317,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       }
     });
 
-    pois.forEach((poi) => {
+    visiblePois.forEach((poi) => {
       let pinColor = '#34C759';
       let label = 'MARK';
 
@@ -272,6 +327,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       } else if (poi.category === 'ENV_ANOMALY') {
         pinColor = '#FFCC00';
         label = 'ENV';
+      } else if (poi.category === 'BASE_HOME') {
+        pinColor = '#0A84FF';
+        label = 'HOME';
       }
 
       const existing = poiMarkerRef.current.get(poi.id);
@@ -282,10 +340,13 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         return;
       }
 
+      const poiCenter = poi.category === 'BASE_HOME'
+        ? '<path d="M5 10.5 12 4l7 6.5v7a1 1 0 0 1-1 1h-3.5v-5h-5v5H6a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>'
+        : '<circle cx="12" cy="12" r="4" fill="#000000"/>';
       const poiHtml = `
         <div style="position: relative; width: 30px; height: 40px;">
           <div style="position: absolute; top: 7px; left: 2px; width: 26px; height: 26px; background: ${pinColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-            <div style="width: 8px; height: 8px; background: #000000; border-radius: 50%;"></div>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">${poiCenter}</svg>
           </div>
           <div style="position: absolute; top: -11px; left: 50%; transform: translateX(-50%); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 9px; font-weight: 700; color: #ffffff; background: ${pinColor}; padding: 1px 6px; border-radius: 6px; white-space: nowrap; line-height: 1;">
             ${label}

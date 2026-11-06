@@ -21,26 +21,22 @@ export const WirelessLinkCard: React.FC<WirelessLinkCardProps> = ({ link, seq })
   };
 
   const bars = getSignalBars(rssi);
+  const signalColor = bars >= 3 ? '#30d158' : bars === 2 ? '#ffd60a' : '#ff453a';
 
   return (
     <div className="glass-panel p-3.5 flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <span className="text-base font-semibold tracking-wider text-neutral-300 uppercase flex items-center gap-1.5">
-          <Radio className="w-3.5 h-3.5 text-[#bf5af2]" />
+          <Radio
+            className="w-3.5 h-3.5"
+            style={{ color: signalColor }}
+            aria-label={`LoRa signal ${bars} of 4`}
+          />
           LORA SX1262 WIRELESS LINK
         </span>
-        <div className="flex items-center gap-1">
-          {[1, 2, 3, 4].map((bar) => (
-            <div
-              key={bar}
-              className="w-1 rounded-sm transition-all"
-              style={{
-                height: `${bar * 3.5 + 4}px`,
-                backgroundColor: bar <= bars ? '#bf5af2' : 'rgba(255, 255, 255, 0.15)',
-              }}
-            />
-          ))}
-        </div>
+        <span className="wireless-signal-label" style={{ color: signalColor }}>
+          {bars}/4 signal
+        </span>
       </div>
 
       <div className="grid grid-cols-4 gap-1.5">
@@ -73,12 +69,8 @@ export const WirelessLinkCard: React.FC<WirelessLinkCardProps> = ({ link, seq })
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-neutral-300 font-mono px-1">
+      <div className="flex items-center text-sm text-neutral-300 font-mono px-1">
         <span>PACKET SEQ: #{seq}</span>
-        <span className="text-[#30d158] flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#30d158] animate-pulse" />
-          ACTIVE DUAL-ESP32 LINK
-        </span>
       </div>
     </div>
   );

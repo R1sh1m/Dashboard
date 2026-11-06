@@ -1,12 +1,13 @@
 import React from 'react';
 import type { PowerData } from '../types/telemetry';
-import { BatteryCharging } from 'lucide-react';
+import { BatteryCharging, Clock3, Gauge } from 'lucide-react';
 
 interface PowerStatusCardProps {
   power: PowerData | null;
+  uptimeSec?: number;
 }
 
-export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power }) => {
+export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power, uptimeSec = 0 }) => {
   const voltage = power?.voltage_v ?? 11.1;
   const current = power?.current_a ?? 0;
   const percent = power?.percent ?? 0;
@@ -28,10 +29,10 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power }) => {
       <div className="flex items-center justify-between">
         <span className="text-base font-semibold tracking-wider text-neutral-300 uppercase flex items-center gap-1.5">
           <BatteryCharging className="w-3.5 h-3.5 text-[#30d158]" />
-          3S LIPO POWER SYSTEM
+          ESTIMATED SERVO POWER
         </span>
         <span className="text-sm font-mono px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
-          11.1V / 10,000 mAh
+          3S LiPo · 10,000 mAh
         </span>
       </div>
 
@@ -82,6 +83,12 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power }) => {
           {isImbalanced ? 'UNBALANCED' : 'BALANCED'}
         </span>
       </div>
+
+      <div className="power-estimate-note">
+        <span><Clock3 size={13} aria-hidden="true" /> Runtime model: {uptimeSec > 0 ? `${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m` : '--'}</span>
+        <span><Gauge size={13} aria-hidden="true" /> Average draw: {current > 0 ? `${current.toFixed(2)} A` : '--'}</span>
+      </div>
+      <p className="power-estimate-caption">Estimate only; servo load and runtime drive the projection.</p>
     </div>
   );
 };

@@ -1,16 +1,56 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import type { LogEntry, LogLevel } from '../types/telemetry';
-import { Terminal, Download, Trash2, ArrowDown, Search } from 'lucide-react';
+import { Download, Search, Trash2 } from 'lucide-react';
 
 interface LogTerminalProps {
   logs: LogEntry[];
-  onClearLogs: () => void;
+  filterLevel: LogLevel | 'ALL';
+  setFilterLevel: (level: LogLevel | 'ALL') => void;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  autoScroll: boolean;
 }
 
-export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) => {
-  const [filterLevel, setFilterLevel] = useState<LogLevel | 'ALL'>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [autoScroll, setAutoScroll] = useState(true);
+export interface LogControlsProps {
+  autoScroll: boolean;
+  setAutoScroll: (enabled: boolean) => void;
+  onExport: () => void;
+  onClear: () => void;
+}
+
+export const LogControls: React.FC<LogControlsProps> = ({
+  autoScroll,
+  setAutoScroll,
+  onExport,
+  onClear,
+}) => (
+  <div className="log-terminal-actions">
+    <button
+      onClick={() => setAutoScroll(!autoScroll)}
+      className={`log-action-button ${autoScroll ? 'is-active' : ''}`}
+      aria-pressed={autoScroll}
+      aria-label={autoScroll ? 'Unlock auto-scroll' : 'Lock auto-scroll'}
+      title="Auto-scroll lock"
+    >
+      <span aria-hidden="true">↓</span>
+    </button>
+    <button onClick={onExport} className="log-action-button" aria-label="Export logs as JSON" title="Export logs as JSON">
+      <Download size={15} aria-hidden="true" />
+    </button>
+    <button onClick={onClear} className="log-action-button is-destructive" aria-label="Clear all logs" title="Clear all logs">
+      <Trash2 size={15} aria-hidden="true" />
+    </button>
+  </div>
+);
+
+export const LogTerminal: React.FC<LogTerminalProps> = ({
+  logs,
+  filterLevel,
+  setFilterLevel,
+  searchQuery,
+  setSearchQuery,
+  autoScroll,
+}) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -31,16 +71,6 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
     return true;
   });
 
-  const exportLogsAsJson = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(logs, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `artemis_logs_${Date.now()}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
   const getLevelColor = (level: LogLevel) => {
     switch (level) {
       case 'INFO':
@@ -56,29 +86,17 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
 
   return (
     <div className="glass-panel flex flex-col h-full overflow-hidden">
-      <div className="h-10 px-3 border-b border-white/10 flex items-center justify-between gap-2 select-none">
-        <div className="flex items-center gap-2">
-          <Terminal className="w-3.5 h-3.5 text-[#2997ff]" />
-          <span className="text-base font-semibold tracking-wider text-neutral-300 uppercase">
-            LIVE TELEMETRY LOGS
-          </span>
-          <span className="text-sm font-mono text-neutral-300">
-            ({filteredLogs.length})
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center bg-black/30 rounded-lg p-0.5 border border-white/10 text-sm">
+      <div className="log-terminal-header select-none">
+        <div className="log-terminal-filter-row">
+          <div className="log-level-filters">
             {(['ALL', 'INFO', 'WARN', 'ERR'] as const).map((lvl) => (
               <button
                 key={lvl}
                 onClick={() => setFilterLevel(lvl)}
                 aria-pressed={filterLevel === lvl}
                 aria-label={`Filter by ${lvl} level`}
-                className={`min-hit-target px-1.5 py-0.5 rounded font-mono transition-all ${
-                  filterLevel === lvl
-                    ? 'bg-white/20 text-white font-semibold'
-                    : 'text-neutral-300 hover:text-white'
+                className={`log-filter-button ${
+                  filterLevel === lvl ? 'is-active' : ''
                 }`}
               >
                 {lvl}
@@ -86,46 +104,17 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
             ))}
           </div>
 
-          <div className="relative flex items-center">
-            <Search className="w-3 h-3 text-neutral-300 absolute left-2 pointer-events-none" />
+          <div className="log-search">
+            <Search size={13} aria-hidden="true" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
-              className="bg-black/30 border border-white/10 rounded-lg pl-6 pr-2 py-0.5 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#0A84FF] w-20 md:w-28"
+              placeholder="Search logs"
+              aria-label="Search logs"
+              className="log-search-input"
             />
           </div>
-
-          <button
-            onClick={() => setAutoScroll(!autoScroll)}
-            className={`min-hit-target p-1 rounded border transition-colors ${
-              autoScroll ? 'bg-white/20 text-[#2997ff] border-white/20' : 'bg-transparent text-neutral-300 border-transparent hover:bg-white/5'
-            }`}
-            aria-pressed={autoScroll}
-            aria-label={autoScroll ? 'Unlock auto-scroll' : 'Lock auto-scroll'}
-            title="Auto-scroll lock"
-          >
-            <ArrowDown className="w-3 h-3" />
-          </button>
-
-          <button
-            onClick={exportLogsAsJson}
-            className="min-hit-target p-1 rounded hover:bg-white/10 text-neutral-300 transition-colors"
-            aria-label="Export logs as JSON"
-            title="Export logs as JSON"
-          >
-            <Download className="w-3 h-3" />
-          </button>
-
-          <button
-            onClick={onClearLogs}
-            className="min-hit-target p-1 rounded hover:bg-white/10 text-neutral-300 hover:text-[#FF453A] transition-colors"
-            aria-label="Clear all logs"
-            title="Clear all logs"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
         </div>
       </div>
 
@@ -135,7 +124,7 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
       >
         {filteredLogs.length === 0 ? (
           <div className="text-neutral-500 text-center py-8">
-            No telemetry logs matching filter criteria
+            No logs matching filter criteria
           </div>
         ) : (
           filteredLogs.map((entry) => {

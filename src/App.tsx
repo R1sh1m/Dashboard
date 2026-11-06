@@ -14,8 +14,16 @@ export function App() {
   const [baudRate, setBaudRate] = useState(115200);
   const [lastPacketTime, setLastPacketTime] = useState<number | null>(null);
   const [pois, setPois] = useState<PointOfInterest[]>([]);
+  const [draftPoiPosition, setDraftPoiPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [draftPoiCategory, setDraftPoiCategory] = useState<PointOfInterest['category']>('MANUAL_MARK');
   const [homePosition, setHomePosition] = useState<{ lat: number; lng: number } | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [radarHistory, setRadarHistory] = useState<Array<{
+    timestamp: number;
+    distance_cm: number;
+    energy: number;
+    target_state: string;
+  }>>([]);
   const [isPoiModalOpen, setIsPoiModalOpen] = useState(false);
   const [isSensorSheetOpen, setIsSensorSheetOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SubsystemTab>('bot');
@@ -27,7 +35,8 @@ export function App() {
     return stored === 'satellite' || stored === 'terrain' || stored === 'osm' ? stored : 'osm';
   });
   const [isLklExpanded, setIsLklExpanded] = useState(false);
-  const [activeNav, setActiveNav] = useState<'home' | 'saved' | 'telemetry'>('home');
+  const [activeNav, setActiveNav] = useState<'home' | 'saved' | 'telemetry' | 'estop'>('home');
+  const [poiCycleIdx, setPoiCycleIdx] = useState(0);
   const mapRef = useRef<MapViewHandle>(null);
 
   useEffect(() => {
@@ -56,6 +65,15 @@ export function App() {
       return current;
     });
     if (packet.radar.human_detected && packet.gps.valid) {
+      setRadarHistory((current) => [
+        ...current.slice(-19),
+        {
+          timestamp: Date.now(),
+          distance_cm: packet.radar.distance_cm,
+          energy: packet.radar.energy,
+          target_state: packet.radar.target_state,
+        },
+      ]);
       setPois((current) => current.some((poi) => poi.category === 'HUMAN_RADAR' && Date.now() - poi.timestamp < 15000)
         ? current
         : [...current, {
@@ -97,13 +115,35 @@ export function App() {
     if (serialStatus === 'CONNECTED') await serialService.sendCommand('ESTOP');
     setTelemetry((current) => current ? { ...current, bot_status: { ...current.bot_status, state: 'EMERGENCY_STOP' } } : current);
   };
+  const handleSidebarEStop = () => {
+    setIsSensorSheetOpen(false);
+    setIsPoiModalOpen(false);
+    void triggerEStop();
+  };
   const addManualPoi = (poi: PointOfInterest) => {
-    setPois((current) => [...current, poi]);
+    setPois((current) => [
+      ...current.filter((currentPoi) => poi.category !== 'BASE_HOME' || currentPoi.category !== 'BASE_HOME'),
+      poi,
+    ]);
+    setDraftPoiPosition(null);
     addLog('INFO', 'POI', `Operator marked POI: ${poi.title} at [${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}]`);
+  };
+  const deletePoi = (poiId: string) => {
+    setPois((current) => current.filter((poi) => poi.id !== poiId));
   };
 
   const curLat = telemetry?.gps.lat ?? 12.971598;
   const curLng = telemetry?.gps.lng ?? 77.594566;
+  const markedHome = pois.find((poi) => poi.category === 'BASE_HOME');
+  const mapHomePosition = markedHome
+    ? { lat: markedHome.lat, lng: markedHome.lng }
+    : homePosition;
+
+  // Reset POI cycle index when the set of points changes
+  useEffect(() => {
+    setPoiCycleIdx(0);
+  }, [pois, mapHomePosition]);
+
   const botState = telemetry?.bot_status.state ?? 'STANDBY';
   const isEStop = botState === 'EMERGENCY_STOP';
   const signalLost = lastPacketTime !== null && now - lastPacketTime > 4000;
@@ -113,6 +153,17 @@ export function App() {
     localStorage.setItem('artemis-map-type', next);
     return next;
   });
+
+  const handleCycleNav = () => {
+    const points: Array<{ lat: number; lng: number }> = [];
+    if (mapHomePosition) points.push(mapHomePosition);
+    pois.forEach((p) => points.push({ lat: p.lat, lng: p.lng }));
+    if (points.length === 0) return;
+    const nextIdx = (poiCycleIdx + 1) % points.length;
+    const pt = points[nextIdx];
+    mapRef.current?.goToLocation(pt.lat, pt.lng);
+    setPoiCycleIdx(nextIdx);
+  };
 
   const handleHome = () => {
     setIsSensorSheetOpen(false);
@@ -128,14 +179,26 @@ export function App() {
     setActiveTab(tab);
     setVisibleTabs(tab === 'bot' || tab === 'power' || tab === 'motors'
       ? ['bot', 'power', 'motors']
-      : [tab]);
+      : tab === 'env' || tab === 'link'
+        ? ['env', 'link']
+        : [tab]);
     setIsSensorSheetOpen(true);
   };
 
   return (
     <div className={`maps-shell ${isSensorSheetOpen ? 'sensor-open' : ''} relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans`}>
       <div className="map-full">
-        <MapView ref={mapRef} gps={telemetry?.gps ?? null} pois={pois} homePosition={homePosition} lastPacketTime={lastPacketTime} mapType={mapType} />
+        <MapView
+          ref={mapRef}
+          gps={telemetry?.gps ?? null}
+          pois={pois}
+          homePosition={mapHomePosition}
+          draftPosition={draftPoiPosition}
+          draftCategory={draftPoiCategory}
+          onDraftPositionChange={setDraftPoiPosition}
+          lastPacketTime={lastPacketTime}
+          mapType={mapType}
+        />
       </div>
       <a className="skip-link" href="#map-main">Skip to map</a>
       <main id="map-main" className="maps-ui" aria-label="Artemis ground station map">
@@ -160,7 +223,7 @@ export function App() {
         )}
         <div className="map-controls" aria-label="Map controls">
           <button className="map-control" onClick={cycleMapType} aria-label="Change map style"><Layers size={18} /></button>
-          <button className="map-control" onClick={() => mapRef.current?.recenterHome()} aria-label="Center on home base"><Navigation2 size={18} /></button>
+          <button className="map-control" onClick={handleCycleNav} aria-label="Cycle through marked points"><Navigation2 size={18} /></button>
         </div>
         <div className="zoom-controls" aria-label="Zoom controls">
           <button className="map-control" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in"><Plus size={18} /></button>
@@ -171,6 +234,7 @@ export function App() {
         botState={botState}
         isEStop={isEStop}
         serialStatus={serialStatus}
+        loraRssi={telemetry?.link?.rssi_dbm}
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         onOpenSensors={() => {
@@ -180,8 +244,11 @@ export function App() {
           setIsSensorSheetOpen((prev) => !prev);
         }}
         onOpenPanel={openTelemetryPanel}
+        onTriggerEStop={handleSidebarEStop}
         onHome={handleHome}
         onSavePoi={() => {
+          setDraftPoiPosition({ lat: curLat, lng: curLng });
+          setDraftPoiCategory('MANUAL_MARK');
           setIsSensorSheetOpen(false);
           setIsPoiModalOpen((prev) => !prev);
         }}
@@ -192,22 +259,28 @@ export function App() {
         setActiveTab={setActiveTab}
         telemetry={telemetry}
         logs={logs}
+        radarHistory={radarHistory}
         serialStatus={serialStatus}
         baudRate={baudRate}
         setBaudRate={setBaudRate}
         onConnectSerial={connectSerial}
         onDisconnectSerial={disconnectSerial}
-        onTriggerEStop={triggerEStop}
+        onClearLogs={() => setLogs([])}
         visibleTabs={visibleTabs}
       />
       <PoiModal
         isOpen={isPoiModalOpen}
-        onClose={() => setIsPoiModalOpen(false)}
-        currentLat={curLat}
-        currentLng={curLng}
+        onClose={() => {
+          setDraftPoiPosition(null);
+          setIsPoiModalOpen(false);
+        }}
+        currentLat={draftPoiPosition?.lat ?? curLat}
+        currentLng={draftPoiPosition?.lng ?? curLng}
         onSavePoi={addManualPoi}
+        onDeletePoi={deletePoi}
         pois={pois}
         onSelectPoi={(poi) => mapRef.current?.goToLocation(poi.lat, poi.lng)}
+        onCategoryChange={setDraftPoiCategory}
       />
     </div>
   );

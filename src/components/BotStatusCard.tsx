@@ -25,7 +25,7 @@ export const BotStatusCard: React.FC<BotStatusCardProps> = ({ status }) => {
           BOT CONTROLLER
         </span>
         <span className="text-sm font-mono px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
-          ESP32-S3 + STM32
+          ESP32
         </span>
       </div>
 

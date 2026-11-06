@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { PoiCategory, PointOfInterest } from '../types/telemetry';
-import { MapPin, User, Droplets, Target } from 'lucide-react';
+import { MapPin, User, Droplets, Target, Plus, X, Trash2 } from 'lucide-react';
 
 interface PoiModalProps {
   isOpen: boolean;
@@ -8,8 +8,10 @@ interface PoiModalProps {
   currentLat: number;
   currentLng: number;
   onSavePoi: (poi: PointOfInterest) => void;
+  onDeletePoi: (poiId: string) => void;
   pois: PointOfInterest[];
   onSelectPoi: (poi: PointOfInterest) => void;
+  onCategoryChange: (category: PoiCategory) => void;
 }
 
 const CATEGORY_CONFIG: Record<PoiCategory, { label: string; icon: React.ReactNode; color: string }> = {
@@ -25,12 +27,13 @@ export const PoiModal: React.FC<PoiModalProps> = ({
   currentLat,
   currentLng,
   onSavePoi,
+  onDeletePoi,
   pois,
   onSelectPoi,
+  onCategoryChange,
 }) => {
   const [category, setCategory] = useState<PoiCategory>('MANUAL_MARK');
   const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
 
   if (!isOpen) return null;
 
@@ -44,13 +47,11 @@ export const PoiModal: React.FC<PoiModalProps> = ({
       lat: currentLat,
       lng: currentLng,
       title: title.trim(),
-      notes: notes.trim(),
       timestamp: Date.now(),
     };
 
     onSavePoi(newPoi);
     setTitle('');
-    setNotes('');
     onClose();
   };
 
@@ -60,12 +61,34 @@ export const PoiModal: React.FC<PoiModalProps> = ({
         role="dialog"
         aria-label="Mark Point of Interest"
       >
-        <div className="sheet-header">
+        <div className="sheet-header poi-sheet-header">
           <span className="sheet-title">Mark Point of Interest</span>
+          <div className="poi-header-actions">
+            <button
+              type="button"
+              onClick={onClose}
+              className="poi-header-action poi-cancel-action"
+              aria-label="Cancel marking point of interest"
+              title="Cancel"
+            >
+              <X size={15} aria-hidden="true" />
+              <span>Cancel</span>
+            </button>
+            <button
+              type="submit"
+              form="poi-form"
+              className="poi-header-action poi-add-action"
+              aria-label="Add marker"
+              title="Add marker"
+            >
+              <Plus size={15} aria-hidden="true" />
+              <span>Add Marker</span>
+            </button>
+          </div>
         </div>
 
-        <div className="sheet-body overflow-y-auto p-4 space-y-4">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="sheet-body poi-sheet-body overflow-y-auto p-4">
+          <form id="poi-form" onSubmit={handleSubmit} className="poi-form">
             {/* Category pills — Apple Maps style */}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-neutral-300 uppercase tracking-wider">
@@ -76,12 +99,15 @@ export const PoiModal: React.FC<PoiModalProps> = ({
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setCategory(key as PoiCategory)}
-                    className={`poi-category min-hit-target ${
-                      category === key
-                        ? `bg-[${config.color}]/20 border-[${config.color}] text-[${config.color}]`
-                        : 'bg-white/5 border-white/10 text-neutral-300'
-                    }`}
+                    onClick={() => {
+                      const nextCategory = key as PoiCategory;
+                      setCategory(nextCategory);
+                      onCategoryChange(nextCategory);
+                    }}
+                    className={`poi-category min-hit-target ${category === key ? 'is-selected' : ''}`}
+                    style={{ '--poi-category-color': config.color } as React.CSSProperties}
+                    aria-pressed={category === key}
+                    aria-label={`Select ${config.label} category`}
                   >
                     {config.icon}
                     <span>{config.label}</span>
@@ -108,34 +134,6 @@ export const PoiModal: React.FC<PoiModalProps> = ({
               />
             </div>
 
-            {/* Notes */}
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-neutral-300">Notes (Optional)</label>
-              <textarea
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Observation notes, terrain details..."
-                className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-lg text-white focus:outline-none focus:border-[#0A84FF] resize-none"
-              />
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="min-hit-target btn-apple-secondary text-lg py-2 px-6"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="min-hit-target btn-apple-primary text-lg py-2 px-6"
-              >
-                Add Marker
-              </button>
-            </div>
           </form>
 
           <section className="poi-list-section" aria-labelledby="poi-list-title">
@@ -147,14 +145,30 @@ export const PoiModal: React.FC<PoiModalProps> = ({
                 {[...pois].reverse().map((poi) => {
                   const config = CATEGORY_CONFIG[poi.category];
                   return (
-                    <button className="poi-list-item" key={poi.id} onClick={() => onSelectPoi(poi)}>
-                      <span className="poi-list-icon" style={{ color: config.color }}>{config.icon}</span>
-                      <span className="poi-list-copy">
-                        <strong>{poi.title}</strong>
-                        <small>{poi.lat.toFixed(5)}, {poi.lng.toFixed(5)}</small>
-                      </span>
-                      <span className="poi-list-arrow" aria-hidden="true">›</span>
-                    </button>
+                    <div className="poi-list-item" key={poi.id}>
+                      <button
+                        type="button"
+                        className="poi-list-select"
+                        onClick={() => onSelectPoi(poi)}
+                        aria-label={`Show ${poi.title} on map`}
+                      >
+                        <span className="poi-list-icon" style={{ color: config.color }}>{config.icon}</span>
+                        <span className="poi-list-copy">
+                          <strong>{poi.title}</strong>
+                          <small>{poi.lat.toFixed(5)}, {poi.lng.toFixed(5)}</small>
+                        </span>
+                        <span className="poi-list-arrow" aria-hidden="true">›</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="poi-delete-button"
+                        onClick={() => onDeletePoi(poi.id)}
+                        aria-label={`Delete ${poi.title}`}
+                        title="Delete marked point"
+                      >
+                        <Trash2 size={15} aria-hidden="true" />
+                      </button>
+                    </div>
                   );
                 })}
               </div>

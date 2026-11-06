@@ -4,9 +4,10 @@ import { Target, UserCheck, UserX } from 'lucide-react';
 
 interface RadarCardProps {
   radar: RadarData | null;
+  history: Array<{ timestamp: number; distance_cm: number; energy: number; target_state: string }>;
 }
 
-export const RadarCard: React.FC<RadarCardProps> = ({ radar }) => {
+export const RadarCard: React.FC<RadarCardProps> = ({ radar, history }) => {
   const isDetected = radar?.human_detected ?? false;
   const state = radar?.target_state ?? 'NO_TARGET';
   const distance = radar?.distance_cm ?? 0;
@@ -60,6 +61,27 @@ export const RadarCard: React.FC<RadarCardProps> = ({ radar }) => {
           </div>
         </div>
       </div>
+
+      <section className="radar-history" aria-labelledby="radar-history-title">
+        <div className="radar-history-heading">
+          <h3 id="radar-history-title">Detection history</h3>
+          <span>{history.length} events</span>
+        </div>
+        {history.length === 0 ? (
+          <p className="radar-history-empty">No person detections recorded.</p>
+        ) : (
+          <ol className="radar-history-list">
+            {[...history].reverse().map((event) => (
+              <li key={event.timestamp}>
+                <span className="radar-history-dot" aria-hidden="true" />
+                <span>{new Date(event.timestamp).toLocaleTimeString()}</span>
+                <strong>{event.target_state.replace('_', ' ')}</strong>
+                <small>{event.distance_cm} cm · {event.energy}%</small>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </div>
   );
 };
