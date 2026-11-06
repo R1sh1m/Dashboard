@@ -1,9 +1,12 @@
 import type { TelemetryPacket } from '../types/telemetry';
+import type { GpsData } from '../types/telemetry';
+import { parseNmeaSentence } from './gpsParser';
 
 export type SerialConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
 
 export interface WebSerialCallbacks {
   onPacket: (packet: TelemetryPacket) => void;
+  onGps?: (gps: GpsData) => void;
   onRawLine: (line: string) => void;
   onStatusChange: (status: SerialConnectionStatus, error?: string) => void;
 }
@@ -111,6 +114,8 @@ export class WebSerialManager {
               const trimmed = line.trim();
               if (!trimmed) continue;
               this.callbacks?.onRawLine(trimmed);
+              const gps = parseNmeaSentence(trimmed);
+              if (gps) this.callbacks?.onGps?.(gps);
               if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
                 try {
                   const packet: TelemetryPacket = JSON.parse(trimmed);

@@ -26,6 +26,7 @@ interface MapViewProps {
   onDraftPositionChange: (position: { lat: number; lng: number }) => void;
   lastPacketTime: number | null;
   mapType?: MapType;
+  followGps: boolean;
 }
 
 export interface MapViewHandle {
@@ -47,6 +48,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   onDraftPositionChange,
   lastPacketTime,
   mapType = 'osm',
+  followGps,
 }, ref) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -215,6 +217,11 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       homeBearingLineRef.current.setLatLngs([latLng, [homePosition.lat, homePosition.lng]]);
     }
   }, [gps, homePosition]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !gps?.valid || !followGps) return;
+    mapInstanceRef.current.panTo([gps.lat, gps.lng], { animate: true, duration: 0.6 });
+  }, [gps, followGps]);
 
   // Home marker
   useEffect(() => {

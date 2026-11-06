@@ -6,6 +6,7 @@ import {
   AlertOctagon,
   Radio,
   Radar,
+  Satellite,
   Settings,
   TerminalSquare,
 } from 'lucide-react';
@@ -107,6 +108,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           {([
             ['env', 'Environment sensors', CloudSun],
             ['link', 'LoRa wireless link', Radio],
+            ['gps', 'GPS', Satellite],
             ['radar', 'Radar', Radar],
             ['logs', 'Logs', TerminalSquare],
           ] as [SubsystemTab, string, React.ComponentType<{ size?: number }>][]).map(([tab, label, Icon]) => (

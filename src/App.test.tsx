@@ -23,6 +23,14 @@ vi.mock('./components/MapView', () => {
   return { MapView };
 });
 
+vi.mock('./services/poiDatabase', () => ({
+  poiDatabase: {
+    load: vi.fn().mockResolvedValue([]),
+    save: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 afterEach(() => {
   cleanup();
 });

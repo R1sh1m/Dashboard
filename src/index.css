@@ -500,6 +500,7 @@ body {
 .map-controls { top: 90px; }
 .zoom-controls { bottom: 24px; }
 .map-control { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.15); border-radius: 50%; color: #e6e6e9; background: rgba(25,26,29,.72); box-shadow: 0 5px 18px rgba(0,0,0,.22); backdrop-filter: blur(16px); cursor: pointer; }
+.map-control.is-active { color: #fff; border-color: rgba(10,132,255,.7); background: rgba(10,132,255,.28); }
 .maps-shell.poi-mode .leaflet-container { cursor: pointer; }
 .coordinate-pill { position: absolute; z-index: 45; left: 22px; bottom: 24px; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; color: #c5c5ca; background: rgba(25,26,29,.76); backdrop-filter: blur(16px); font-size: 11px; pointer-events: none; }
 .coordinate-pill strong { color: #fff; font-weight: 600; }
@@ -657,6 +658,68 @@ body {
 .sensor-pair {
   display: grid;
   gap: 12px;
+}
+
+.gps-coordinate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.gps-coordinate-value {
+  margin-top: 3px;
+  color: #fff;
+  font: 700 1.15rem/1.1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: -.03em;
+}
+
+.gps-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 0 2px;
+  color: #c7c7cc;
+  font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.gps-mode-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  background: rgba(255,255,255,.04);
+}
+
+.gps-mode-button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #aeb2ba;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.gps-mode-button:hover,
+.gps-mode-button:focus-visible,
+.gps-mode-button.is-selected {
+  border-color: rgba(10,132,255,.5);
+  color: #fff;
+  background: rgba(10,132,255,.18);
+}
+
+.gps-source-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #8e8e93;
+  font-size: 10px;
 }
 
 .telemetry-sheet .glass-panel {
@@ -1262,7 +1325,7 @@ select:focus-visible {
   background: rgba(255,255,255,.09);
 }
 .sidebar-nav-subitem {
-  min-height: 40px;
+  min-height: 44px;
   padding-left: 26px;
   color: #aeb2ba;
   font-size: 12px;

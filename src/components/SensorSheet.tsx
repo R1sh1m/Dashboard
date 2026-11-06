@@ -7,9 +7,10 @@ import {
   CheckCircle2,
   Radio,
   Radar,
+  Satellite,
   TerminalSquare,
 } from 'lucide-react';
-import type { TelemetryPacket, LogEntry, LogLevel } from '../types/telemetry';
+import type { TelemetryPacket, LogEntry, LogLevel, GpsData } from '../types/telemetry';
 import type { SerialConnectionStatus } from '../services/webSerial';
 import { BotStatusCard } from './BotStatusCard';
 import { PowerStatusCard } from './PowerStatusCard';
@@ -17,9 +18,10 @@ import { MotorMatrixCard } from './MotorMatrixCard';
 import { EnvironmentalCard } from './EnvironmentalCard';
 import { RadarCard } from './RadarCard';
 import { WirelessLinkCard } from './WirelessLinkCard';
+import { GpsCard, type MapControlMode } from './GpsCard';
 import { LogControls, LogTerminal } from './LogTerminal';
 
-export type SubsystemTab = 'bot' | 'power' | 'motors' | 'env' | 'radar' | 'link' | 'logs';
+export type SubsystemTab = 'bot' | 'power' | 'motors' | 'env' | 'radar' | 'link' | 'gps' | 'logs';
 
 const TAB_LABELS: Record<SubsystemTab, string> = {
   bot: 'Bot Status',
@@ -28,6 +30,7 @@ const TAB_LABELS: Record<SubsystemTab, string> = {
   env: 'Environmental (BME688)',
   radar: 'mmWave Radar',
   link: 'LoRa Wireless Link',
+  gps: 'GPS (NEO-M8)',
   logs: 'Logs',
 };
 
@@ -38,6 +41,7 @@ const TAB_ICONS: Record<SubsystemTab, React.ReactNode> = {
   env: <CloudSun size={15} aria-hidden="true" />,
   radar: <Radar size={15} aria-hidden="true" />,
   link: <Radio size={15} aria-hidden="true" />,
+  gps: <Satellite size={15} aria-hidden="true" />,
   logs: <TerminalSquare size={15} aria-hidden="true" />,
 };
 
@@ -46,6 +50,9 @@ interface SensorSheetProps {
   activeTab: SubsystemTab;
   setActiveTab: (tab: SubsystemTab) => void;
   telemetry: TelemetryPacket | null;
+  gps: GpsData | null;
+  mapControlMode: MapControlMode;
+  onMapControlModeChange: (mode: MapControlMode) => void;
   logs: LogEntry[];
   radarHistory: Array<{ timestamp: number; distance_cm: number; energy: number; target_state: string }>;
   serialStatus: SerialConnectionStatus;
@@ -62,6 +69,9 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
   activeTab,
   setActiveTab,
   telemetry,
+  gps,
+  mapControlMode,
+  onMapControlModeChange,
   logs,
   radarHistory,
   serialStatus,
@@ -160,14 +170,16 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
           {activeTab === 'bot' && <BotStatusCard status={telemetry?.bot_status ?? null} />}
           {activeTab === 'power' && <PowerStatusCard power={telemetry?.power ?? null} uptimeSec={telemetry?.bot_status.uptime_sec} />}
           {activeTab === 'motors' && <MotorMatrixCard motors={telemetry?.motors ?? null} />}
-          {isCombinedSensors && (activeTab === 'env' || activeTab === 'link') && (
+          {isCombinedSensors && (activeTab === 'env' || activeTab === 'link' || activeTab === 'gps') && (
             <div className="sensor-pair">
               <EnvironmentalCard env={telemetry?.env ?? null} />
               <WirelessLinkCard link={telemetry?.link ?? null} seq={telemetry?.seq ?? 0} />
+              <GpsCard gps={gps} mode={mapControlMode} onModeChange={onMapControlModeChange} />
             </div>
           )}
           {!isCombinedSensors && activeTab === 'env' && <EnvironmentalCard env={telemetry?.env ?? null} />}
           {!isCombinedSensors && activeTab === 'link' && <WirelessLinkCard link={telemetry?.link ?? null} seq={telemetry?.seq ?? 0} />}
+          {!isCombinedSensors && activeTab === 'gps' && <GpsCard gps={gps} mode={mapControlMode} onModeChange={onMapControlModeChange} />}
           {activeTab === 'radar' && <RadarCard radar={telemetry?.radar ?? null} history={radarHistory} />}
           {activeTab === 'logs' && (
             <div className="log-terminal-wrap">
