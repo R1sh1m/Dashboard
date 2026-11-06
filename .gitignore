@@ -59,3 +59,11 @@ AGENTS.md
 
 # External design reference (not tracked per operator request)
 Docs/*_MAPS.md
+
+# Build artifacts and generated files
+build/
+**/subdir.mk
+Sender_station/**/build.bat
+Sender_station/**/makefile.init
+Sender_station/**/App/
+
