@@ -1,5 +1,5 @@
 :root {
-  /* Apple HIG Semantic Tokens */
+  /* Semantic design tokens */
   --color-primary: #0066cc;
   --color-primary-hover: #0071e3;
   --color-primary-dark: #2997ff;
@@ -27,7 +27,7 @@
   --hairline-light: rgba(0, 0, 0, 0.08);
   --hairline-dark: rgba(255, 255, 255, 0.12);
 
-  --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --font-stack: BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
 
   --sidebar-width: 190px;
 }
@@ -70,8 +70,8 @@ body {
   border-bottom: 1px solid var(--hairline-dark);
 }
 
-/* Apple Action Blue Button */
-.btn-apple-primary {
+/* Action blue button */
+.btn-primary {
   background-color: var(--color-primary-dark);
   color: #ffffff;
   font-weight: 500;
@@ -91,12 +91,12 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-.btn-apple-primary:hover {
+.btn-primary:hover {
   background-color: #52a9ff;
   transform: translateY(-0.5px);
 }
 
-.btn-apple-secondary {
+.btn-secondary {
   background-color: rgba(255, 255, 255, 0.08);
   color: #f5f5f7;
   font-weight: 500;
@@ -111,7 +111,7 @@ body {
   transition: all 0.15s ease;
 }
 
-.btn-apple-secondary:hover {
+.btn-secondary:hover {
   background-color: rgba(255, 255, 255, 0.14);
 }
 
@@ -500,6 +500,7 @@ body {
 .map-controls { top: 90px; }
 .zoom-controls { bottom: 24px; }
 .map-control { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.15); border-radius: 50%; color: #e6e6e9; background: rgba(25,26,29,.72); box-shadow: 0 5px 18px rgba(0,0,0,.22); backdrop-filter: blur(16px); cursor: pointer; }
+.maps-shell.poi-mode .leaflet-container { cursor: pointer; }
 .coordinate-pill { position: absolute; z-index: 45; left: 22px; bottom: 24px; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; color: #c5c5ca; background: rgba(25,26,29,.76); backdrop-filter: blur(16px); font-size: 11px; pointer-events: none; }
 .coordinate-pill strong { color: #fff; font-weight: 600; }
 .telemetry-glance { position: absolute; right: 82px; bottom: 24px; z-index: 45; display: flex; gap: 18px; padding: 9px 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(25,26,29,.76); backdrop-filter: blur(16px); pointer-events: none; }
@@ -936,7 +937,7 @@ body {
   .maps-shell *, .maps-shell *::before, .maps-shell *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
-/* Apple HIG minimum hit target: 44x44pt */
+/* Minimum hit target: 44x44pt */
 .min-hit-target {
   min-height: 44px;
   min-width: 44px;
@@ -974,7 +975,7 @@ select:focus-visible {
   75%, 100% { transform: scale(2); opacity: 0; }
 }
 
-/* ===== Apple Maps Dark Theme — Sidebar & Right Sheet ===== */
+/* ===== Dark theme — Sidebar & Right Sheet ===== */
 
 /* Persistent left sidebar (frosted glass) */
 .sidebar {
@@ -1063,7 +1064,7 @@ select:focus-visible {
   background: rgba(18, 18, 20, 0.70);
 }
 
-/* Right sensor sheet (frosted glass, Apple Maps style) */
+/* Right sensor sheet (frosted glass style) */
 .sheet {
   position: fixed;
   top: 0;

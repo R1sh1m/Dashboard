@@ -56,3 +56,6 @@ context/
 opencode.json
 opencode.jsonc
 AGENTS.md
+
+# External design reference (not tracked per operator request)
+Docs/*_MAPS.md

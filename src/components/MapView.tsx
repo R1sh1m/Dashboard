@@ -22,6 +22,7 @@ interface MapViewProps {
   homePosition: { lat: number; lng: number } | null;
   draftPosition: { lat: number; lng: number } | null;
   draftCategory: PointOfInterest['category'];
+  isPoiMode: boolean;
   onDraftPositionChange: (position: { lat: number; lng: number }) => void;
   lastPacketTime: number | null;
   mapType?: MapType;
@@ -42,6 +43,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   homePosition,
   draftPosition,
   draftCategory,
+  isPoiMode,
   onDraftPositionChange,
   lastPacketTime,
   mapType = 'osm',
@@ -111,6 +113,28 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     };
   }, []);
 
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const handleDoubleClick = (event: L.LeafletMouseEvent) => {
+      if (isPoiMode) {
+        onDraftPositionChange({ lat: event.latlng.lat, lng: event.latlng.lng });
+      }
+    };
+
+    if (isPoiMode) {
+      map.doubleClickZoom.disable();
+    } else {
+      map.doubleClickZoom.enable();
+    }
+
+    map.on('dblclick', handleDoubleClick);
+    return () => {
+      map.off('dblclick', handleDoubleClick);
+    };
+  }, [isPoiMode, onDraftPositionChange]);
+
   // Swap the basemap tile layer when mapType changes, preserving the current
   // center/zoom so the map does not reset. Layers are created once and cached
   // (see getTileLayer), so switching is instant and tiles stay cached.
@@ -168,7 +192,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         robotMarkerRef.current = L.marker(latLng, { icon: robotIcon })
           .addTo(mapInstanceRef.current)
           .bindPopup(`
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
+            <div style="font-family: BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
               <div style="font-weight: 600; font-size: 13px;">Artemis Hexapod</div>
               <div style="font-size: 11px; color: #666; margin-top: 2px;">Lat: ${gps.lat.toFixed(6)}<br/>Lng: ${gps.lng.toFixed(6)}</div>
               <div style="font-size: 11px; color: #0A84FF; margin-top: 4px;">Speed: ${gps.speed_mps} m/s | Alt: ${gps.alt_m}m</div>
@@ -198,9 +222,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
     const homeHtml = `
       <div style="position: relative; width: 30px; height: 30px;">
-        <div style="width: 30px; height: 30px; background: rgba(52,199,89,0.16); border: 1px solid rgba(52,199,89,0.4); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
-            <path d="M5 10.5 12 4l7 6.5v7a1 1 0 0 1-1 1h-3.5v-5h-5v5H6a1 1 0 0 1-1-1z" fill="none" stroke="#34C759" stroke-width="1.8" stroke-linejoin="round"/>
+        <div style="width: 34px; height: 34px; background: rgba(10,132,255,0.3); border: 2px solid #0A84FF; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,0.35);">
+          <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+            <path d="M5 10.5 12 4l7 6.5v7a1 1 0 0 1-1 1h-3.5v-5h-5v5H6a1 1 0 0 1-1-1z" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round"/>
           </svg>
         </div>
       </div>
@@ -209,15 +233,15 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     const homeIcon = L.divIcon({
       html: homeHtml,
       className: 'custom-home-pin',
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
     });
 
     if (!homeMarkerRef.current) {
       homeMarkerRef.current = L.marker([homePosition.lat, homePosition.lng], { icon: homeIcon })
         .addTo(mapInstanceRef.current)
         .bindPopup(`
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
+          <div style="font-family: BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
             <div style="font-weight: 600; font-size: 13px;">Home Base Station</div>
             <div style="font-size: 11px; color: #666; margin-top: 2px;">Origin Point &amp; LoRa Link Base</div>
           </div>
@@ -264,8 +288,6 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         const position = draftMarkerRef.current?.getLatLng();
         if (position) onDraftPositionChange({ lat: position.lat, lng: position.lng });
       });
-      mapInstanceRef.current.panTo([draftPosition.lat, draftPosition.lng], { animate: false });
-      mapInstanceRef.current.panBy([-240, 0], { animate: false });
     } else {
       draftMarkerRef.current.setLatLng([draftPosition.lat, draftPosition.lng]);
       draftMarkerRef.current.setIcon(draftIcon);
@@ -363,7 +385,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
       const marker = L.marker([poi.lat, poi.lng], { icon: poiIcon });
       marker.bindPopup(`
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
+        <div style="font-family: BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
           <div style="font-weight: 600; font-size: 13px; color: ${pinColor};">${poi.title}</div>
           <div style="font-size: 11px; color: #666; margin-top: 2px;">${poi.notes || 'Identified by Artemis telemetry'}</div>
           ${poi.meta?.distance_cm ? `<div style="font-size: 10px; color: #777; margin-top: 4px;">Radar Dist: ${poi.meta.distance_cm} cm | Energy: ${poi.meta.energy}%</div>` : ''}
@@ -385,7 +407,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
   const recenterHome = () => {
     if (mapInstanceRef.current && homePosition) {
-      mapInstanceRef.current.panTo([homePosition.lat, homePosition.lng], { animate: true });
+      mapInstanceRef.current.setView([homePosition.lat, homePosition.lng], 18, { animate: true });
     }
   };
 

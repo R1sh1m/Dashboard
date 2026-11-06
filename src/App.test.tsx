@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('App — Home button behavior', () => {
-  it('collapses all open panels, resets tab, and recenters+rezomes map on home click', () => {
+  it('collapses all open panels, resets tab, and recenters the map on home click', () => {
     render(<App />);
 
     // Open telemetry sheet
@@ -68,8 +68,8 @@ describe('App — Home button behavior', () => {
     expect(document.querySelector('.poi-panel')).toBeNull();
     // Map should recenter home
     expect(mockHandle.recenterHome).toHaveBeenCalled();
-    // Map zoom should be reset
-    expect(mockHandle.resetZoom).toHaveBeenCalled();
+    // Home recentering owns the target zoom so it is one map operation.
+    expect(mockHandle.resetZoom).not.toHaveBeenCalled();
   });
 
   it('keeps POI list state intact when home is pressed (does not clear pois)', () => {
@@ -84,7 +84,7 @@ describe('App — Home button behavior', () => {
     // If handleHome reset pois, we'd see a re-render with empty pois
     // The fact that home click succeeds without errors means pois state is preserved
     expect(mockHandle.recenterHome).toHaveBeenCalled();
-    expect(mockHandle.resetZoom).toHaveBeenCalled();
+    expect(mockHandle.resetZoom).not.toHaveBeenCalled();
   });
 });
 

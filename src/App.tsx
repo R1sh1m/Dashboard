@@ -171,7 +171,6 @@ export function App() {
     setIsLklExpanded(false);
     setActiveTab('bot');
     mapRef.current?.recenterHome();
-    mapRef.current?.resetZoom();
   };
 
   const openTelemetryPanel = (tab: SubsystemTab) => {
@@ -186,7 +185,7 @@ export function App() {
   };
 
   return (
-    <div className={`maps-shell ${isSensorSheetOpen ? 'sensor-open' : ''} relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans`}>
+    <div className={`maps-shell ${isSensorSheetOpen ? 'sensor-open' : ''} ${isPoiModalOpen ? 'poi-mode' : ''} relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans`}>
       <div className="map-full">
         <MapView
           ref={mapRef}
@@ -195,6 +194,7 @@ export function App() {
           homePosition={mapHomePosition}
           draftPosition={draftPoiPosition}
           draftCategory={draftPoiCategory}
+          isPoiMode={isPoiModalOpen}
           onDraftPositionChange={setDraftPoiPosition}
           lastPacketTime={lastPacketTime}
           mapType={mapType}
