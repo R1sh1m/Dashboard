@@ -32,7 +32,7 @@ export const WirelessLinkCard: React.FC<WirelessLinkCardProps> = ({ link, seq })
             style={{ color: signalColor }}
             aria-label={`LoRa signal ${bars} of 4`}
           />
-          LORA SX1262 WIRELESS LINK
+          LORA SX1261 WIRELESS LINK
         </span>
         <span className="wireless-signal-label" style={{ color: signalColor }}>
           {bars}/4 signal

@@ -7,38 +7,128 @@
 
 ---
 
-## 1. Hardware Pinout (STM32 → SX1262)
+## 1. Hardware Pinout (STM32 → Modules)
 
-| SX1262 Pin | STM32 Pin | Function |
-|------------|-----------|----------|
-| NSS        | PA4       | SPI1 Chip Select |
-| SCK        | PA5       | SPI1 SCK |
-| MISO       | PA6       | SPI1 MISO |
-| MOSI       | PA7       | SPI1 MOSI |
-| RESET      | PE11      | Reset (active low) |
-| BUSY       | PF13      | Busy input |
-| DIO1       | PE9       | IRQ (EXTI9_5) |
-| TXEN       | PF14      | TX enable (optional) |
-| RXEN       | PE13      | RX enable (optional) |
+All pin assignments below match `sensor_fusion_transmit.ioc` (CubeMX config). Verify in STM32CubeMX → Pinout view before wiring.
 
-**Sensors:**
-| Sensor | Interface | STM32 Pin(s) |
-|--------|-----------|--------------|
-| BME688 | I2C1      | PB6 (SCL), PB9 (SDA) |
-| NEO-M8N GPS | UART4 | PA0 (TX), PA1 (RX) |
-| LD2412 Radar | UART5 | PC12 (TX), PD2 (RX) |
+### SX1262 LoRa Module (SPI1)
+
+| SX1262 Pin | Arduino Label | Connector / Pin | STM32 GPIO | Function |
+|------------|---------------|-----------------|------------|----------|
+| 3V3 | 3.3V | CN8 / 7 | 3.3V | Power |
+| GND | GND | CN8 / 11 | GND | Ground |
+| CS / NSS | D10 | CN7 / 16 | PA4 | SPI1 Chip Select |
+| SCK / CLK | D13 | CN7 / 10 | PA5 | SPI1 SCK |
+| MOSI | D11 | CN7 / 14 | PA7 | SPI1 MOSI |
+| MISO | D12 | CN7 / 12 | PA6 | SPI1 MISO |
+| RESET | D8 | CN7 / 20 | PE11 | Reset (active low) |
+| BUSY | D7 | CN10 / 2 | PF13 | Busy input |
+| DIO1 | D6 | CN10 / 4 | PE9 | IRQ (EXTI9_5) |
+| DIO2 | Pending | — | — | Not connected |
+| RXEN | Pending | CN10 / 14 | PE13 | RX enable |
+| TXEN | Pending | CN10 / 16 | PF14 | TX enable |
+| ANT | Antenna | — | — | LoRa antenna |
+
+### BME688 Environmental Sensor (I2C1)
+
+| BME688 Pin | Arduino Label | Connector / Pin | STM32 GPIO | Function |
+|------------|---------------|-----------------|------------|----------|
+| VCC | 3.3V | CN8 / 7 | 3.3V | Power |
+| GND | GND | CN8 / 11 | GND | Ground |
+| SCL | D15 | CN7 / 2 | PB6 | I2C1 SCL |
+| SDA | D14 | CN7 / 4 | PB9 | I2C1 SDA |
+| SDO | GND | CN8 / 11 | GND | Address 0x76 (GND = 0x76, 3.3V = 0x77) |
+| CS | 3.3V | CN8 / 7 | 3.3V | HIGH = I2C mode |
+
+> **Important:** CS must be HIGH to select I²C mode. SDO connected to GND selects address 0x76. Add 4.7kΩ pull-ups on SCL/SDA if your breakout doesn't have them.
+
+### NEO-M8N GPS Module (UART4)
+
+| GPS Pin | Arduino Label | Connector / Pin | STM32 GPIO | Function |
+|---------|---------------|-----------------|------------|----------|
+| VCC | 3.3V | CN8 / 7 | 3.3V | Power |
+| GND | GND | CN8 / 11 | GND | Ground |
+| RX | D52 | CN9 / 4 | PA1 | UART4_RX (GPS RX ← STM32 TX) |
+| TX | D53 | CN9 / 6 | PA0 | UART4_TX (GPS TX → STM32 RX) |
+
+> **Cross TX/RX:** GPS TX (D53, PA0) → STM32 PA1. STM32 PA0 → GPS RX (D52).
+> Baud rate: 9600 (configured in .ioc).
+
+### LD2412 mmWave Radar (UART5)
+
+| Radar Pin | Arduino Label | Connector / Pin | STM32 GPIO | Function |
+|-----------|---------------|-----------------|------------|----------|
+| VCC | 5V | CN8 / 9 | 5V | Power |
+| GND | GND | CN8 / 11 | GND | Ground |
+| TX | — | — | PD2 | UART5_RX (Radar TX → STM32 RX) |
+| RX | — | — | PC12 | UART5_TX (STM32 TX → Radar RX) |
+
+> **Cross TX/RX:** Radar TX → STM32 PD2. STM32 PC12 → Radar RX.
+> Baud rate: 115200. Radar needs 5V power, not 3.3V.
+
+### LCD 16×2 via PCF8574 (I2C2)
+
+| LCD Pin | Arduino/Zio Label | Connector / Pin | STM32 GPIO | Function |
+|---------|-------------------|-----------------|------------|----------|
+| VCC | 5V* | CN8 / 9 | 5V | Power |
+| GND | GND | CN8 / 11 | GND | Ground |
+| SDA | D68 | CN9 / 21 | PF0 | I2C2 SDA |
+| SCL | D69 | CN9 / 19 | PF1 | I2C2 SCL |
+
+### ESP32 Ground Receiver (USART6)
+
+| ESP32 Pin | Nucleo Pin | Function |
+|-----------|------------|----------|
+| UART TX | PG9 (USART6_RX) | ESP32 TX → Nucleo RX |
+| UART RX | PG14 (USART6_TX) | Nucleo TX → ESP32 RX |
+| GND | GND | Common ground |
+
+> **Cross TX/RX:** ESP32 TX → Nucleo PG9. Nucleo PG14 → ESP32 RX.
+> Baud rate: 115200.
+> ⚠️ **USART6 is NOT yet configured in the .ioc file.** You must enable USART6 on PG9/PG14 in STM32CubeMX before this will work.
 
 ---
 
-## 2. Build & Flash
+## 2. Module Interface Summary
+
+| Module | Interface | STM32 Pins | Connector |
+|--------|-----------|------------|-----------|
+| SX1262 LoRa | SPI1 | PA5 (SCK), PA6 (MISO), PA7 (MOSI), PA4 (CS), PE11 (RESET), PF13 (BUSY), PE9 (DIO1), PE13 (RXEN), PF14 (TXEN) | CN7, CN10 |
+| BME688 | I2C1 | PB6 (SCL), PB9 (SDA) | CN7 |
+| LCD (PCF8574) | I2C2 | PF0 (SDA), PF1 (SCL) | CN9 |
+| NEO-M8N GPS | UART4 | PA0 (TX), PA1 (RX) | CN9 |
+| LD2412 Radar | UART5 | PC12 (TX), PD2 (RX) | CN7/CN8 |
+| ESP32 Receiver | USART6 | PG9 (RX), PG14 (TX) | CN10 |
+
+> Two independent I²C buses: I2C1 (BME688) and I2C2 (LCD). ESP32 communicates over USART6, not I²C.
+
+---
+
+## 3. Power Summary
+
+| Module | Voltage | Nucleo Pin |
+|--------|---------|------------|
+| SX1262 LoRa | 3.3V | CN8 / 7 |
+| BME688 | 3.3V | CN8 / 7 |
+| NEO-M8N GPS | 3.3V | CN8 / 7 |
+| LD2412 Radar | **5V** | CN8 / 9 |
+| LCD (PCF8574) | 5V | CN8 / 9 |
+| ESP32 | USB-powered | — |
+
+**All GND pins connect to CN8 / 11 (common ground).**
+
+---
+
+## 4. Build & Flash
 
 ### Using STM32CubeIDE
 
 1. Open STM32CubeIDE → **File → Open Projects from File System**
 2. Select: `Dashboard/Sender_station/sensor_fusion_transmit/sensor_fusion_transmit`
 3. The `.ioc` file (CubeMX config) is included — double-click to verify pinout/clocks.
-4. Build: **Project → Build All** (or `Ctrl+B`)
-5. Connect ST-Link, then **Run → Debug** to flash and attach GDB.
+4. **Before building:** Enable USART6 on PG9/PG14 in CubeMX if you want ESP32 communication.
+5. Build: **Project → Build All** (or `Ctrl+B`)
+6. Connect ST-Link, then **Run → Debug** to flash and attach GDB.
 
 ### Using Command Line (Make)
 
@@ -50,23 +140,34 @@ make -j$(nproc)
 
 ---
 
-## 3. Shared Configuration
+## 5. Shared Configuration
 
-All LoRa radio parameters are defined in `common/lora_cfg.h` and must match the ESP32 receiver exactly. The STM32 project includes this header via its include path.
+All LoRa radio parameters are defined in `common/lora_cfg.h` and must match the ESP32 receiver exactly.
+
+| Parameter | Value |
+|-----------|-------|
+| Frequency | 865.4025 MHz |
+| SF | 9 |
+| BW | 125 kHz |
+| CR | 4/5 |
+| Sync word | 0x12 |
+| Preamble | 12 symbols |
+| TX power | 14 dBm |
 
 ---
 
-## 4. Sensors Already Integrated
+## 6. Sensors Already Integrated
 
 | Sensor | Driver File | Status |
 |--------|-------------|--------|
 | BME688 (environmental) | `Core/Src/bme688_port.c` | Implemented |
 | NEO-M8N (GPS) | `Core/Src/gps_ubx.c` | Implemented (UBX NAV-PVT/DOP) |
 | LD2412 (mmWave radar) | `Core/Src/ld2412.c` | Implemented |
+| LCD (PCF8574) | `Core/Src/lcd_i2c.c` | Implemented |
 
 ---
 
-## 5. Application Logic
+## 7. Application Logic
 
 `Core/Src/app.c` implements:
 
@@ -81,3 +182,24 @@ The main loop (`app_loop()`) runs at ~100 Hz and:
 2. Polls LoRa radio for TX/RX events
 3. Sends periodic GPS, status, power, env, telemetry packets
 4. Handles E-STOP commands from ground
+5. Forwards telemetry to ESP32 over USART6 for dashboard upload
+
+---
+
+## 8. System Architecture
+
+```
+STM32 Nucleo                          ESP32 Ground Receiver
+┌─────────────────┐                   ┌──────────────────┐
+│  SX1262 LoRa    │─── LoRa RF ───────│  SX1261 LoRa     │
+│  (SPI1)         │                   │  (SPI)           │
+│  BME688         │                   │  USB-CDC ───────►│ React Dashboard
+│  (I2C1)         │                   │  (115200 baud)   │
+│  GPS (UART4)    │                   │                  │
+│  Radar (UART5)  │                   │                  │
+│  LCD (I2C2)     │                   │                  │
+│  ESP32 (USART6) │─── USART6 ───────►│  USART6          │
+└─────────────────┘                   └──────────────────┘
+```
+
+The STM32 aggregates all sensor data, transmits it via LoRa, and also forwards telemetry to the ESP32 over USART6. The ESP32 receives LoRa packets directly (same RF link) and forwards everything to the React dashboard over USB-CDC. No direct wire between ESP32 and Nucleo is needed unless you add a hardware E-STOP line.

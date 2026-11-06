@@ -58,18 +58,44 @@ The `monitor` output shows `ESP_LOGI` messages from the firmware. The USB-CDC po
 
 ---
 
-## 3. Dashboard Integration
+## 3. ESP32 ↔ Nucleo Communication (USART6)
 
-The ESP32 emits **newline-delimited JSON** over USB-CDC at 115200 baud. The React dashboard (`src/services/webSerial.ts`) opens any CDC device matching these VIDs:
+The ESP32 communicates with the STM32 Nucleo over **USART6** for telemetry forwarding and command exchange:
+
+| ESP32 Pin | Nucleo Pin | Function |
+|-----------|------------|----------|
+| UART TX | PG9 (USART6_RX) | ESP32 TX → Nucleo RX |
+| UART RX | PG14 (USART6_TX) | Nucleo TX → ESP32 RX |
+| GND | GND | Common ground |
+
+> **Cross TX/RX:** ESP32 TX → Nucleo PG9. Nucleo PG14 → ESP32 RX.
+> Baud rate: 115200. The STM32 acts as USART6 master; the ESP32 is the slave.
+> Configure the ESP32 UART GPIO numbers in `esp_receiver/main/main.c` to match your board's pinout.
+
+## 4. Dashboard Integration
+
+The ESP32 emits **newline-delimited JSON** (schema matches `src/types/telemetry.ts` `TelemetryPacket`) at **115200 baud**. The React dashboard (`src/services/webSerial.ts`) opens any CDC device matching these VIDs:
 
 | Vendor ID | Device |
 |-----------|--------|
-| 0x303A    | Espressif (ESP32 USB-Serial-JTAG) |
+| 0x303A    | Espressif (ESP32 USB-Serial-JTAG / native USB-CDC) |
 | 0x10C4    | Silicon Labs CP210x |
 | 0x1A86    | CH340 |
 | 0x0403    | FTDI |
 
-Connect the ESP32 via USB-C, open the dashboard at `http://localhost:5173`, click **Connect** in the Wireless Link card, and select the ESP32 serial port.
+### Serial output wiring
+
+`ground_bridge.c` writes the JSON to **UART0** (`uart_write_bytes(UART_NUM_0, ...)`), i.e. ESP32-S3 **GPIO1 (TX) / GPIO3 (RX)** at 115200 baud. Choose one of the following:
+
+* **External USB-UART bridge** (recommended for the current firmware): wire the bridge's TX/RX to ESP32 GPIO3/GPIO1 (crossed), connect the bridge to the host over USB, and select its COM port (`/dev/ttyACM0` or `COMx`) in the dashboard. Matches the CP210x / CH340 / FTDI VID filters above.
+* **Native ESP32-S3 USB-CDC** (`/dev/ttyACM0`, VID 0x303A): switch the write target in `esp_receiver/main/ground_bridge.c` from `uart_write_bytes(UART_NUM_0, ...)` to the tinyusb CDC API (`CONFIG_USB_CDC_ENABLED` is already on in `sdkconfig.defaults`; add `esp_tinyusb` to the component `REQUIRES`). This is not yet wired up — see the TODO in `ground_bridge.c`.
+
+Connect the ESP32/bridge via USB-C, open the dashboard at `http://localhost:5173`, click **Connect** in the Wireless Link card, and select the serial port.
+
+Connectivity is reflected on the dashboard as follows:
+* **Left Sidebar** link pill: `DISCONNECTED` / `CONNECTING` / `CONNECTED` / `ERROR` (from `serialStatus`).
+* **Sensor Sheet → LoRa Wireless Link**: signal bars, RSSI, SNR, loss, latency, and packet seq (updated on every valid frame).
+* **Map "Last known location" banner**: appears when no packet has been received for >4s or GPS is invalid.
 
 ---
 

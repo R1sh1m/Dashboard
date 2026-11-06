@@ -29,8 +29,8 @@ static const char *TAG = "lora_radio";
 #define PIN_MOSI    GPIO_NUM_23
 #define PIN_MISO    GPIO_NUM_19
 #define PIN_RESET   GPIO_NUM_14
-#define PIN_BUSY    GPIO_NUM_27
-#define PIN_DIO1    GPIO_NUM_26
+#define PIN_BUSY    GPIO_NUM_27   /* matches Docs/ESP32_Receiver.md pinout */
+#define PIN_DIO1    GPIO_NUM_26   /* matches Docs/ESP32_Receiver.md pinout */
 #define PIN_TXEN    GPIO_NUM_25   /* Optional, if LORA_USE_RXTX_PINS */
 #define PIN_RXEN    GPIO_NUM_33   /* Optional, if LORA_USE_RXTX_PINS */
 

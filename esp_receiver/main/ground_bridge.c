@@ -17,6 +17,19 @@
 #include "esp_timer.h"
 #include "driver/uart.h"
 
+/* Native USB-CDC (ESP32-S3 USB OTG via TinyUSB) vs UART0 output.
+ * Set USE_NATIVE_USB_CDC=1 to emit JSON over the ESP32-S3 native USB-CDC
+ * (/dev/ttyACM0, VID 0x303A). Set to 0 to use UART0 (GPIO1 TX / GPIO3 RX)
+ * with an external USB-UART bridge (CP210x/CH340/FTDI). */
+#ifndef USE_NATIVE_USB_CDC
+#define USE_NATIVE_USB_CDC 1
+#endif
+
+#if USE_NATIVE_USB_CDC
+#include "esp_tinyusb.h"
+#include "tusb_cdc_acm.h"
+#endif
+
 static const char *TAG = "ground_bridge";
 
 /* ============================================================================
@@ -280,9 +293,23 @@ static void emit_json(void)
     );
     
     if (snprintf_ret > 0 && snprintf_ret < (int)sizeof(buf)) {
-        /* Write to USB-CDC (UART0 for now, can be changed to USB-JTAG) */
+#if USE_NATIVE_USB_CDC
+        /* Write JSON over native ESP32-S3 USB-CDC (TinyUSB CDC ACM).
+         * tud_cdc_write is non-blocking; flush to push bytes to the host. */
+        if (tud_cdc_connected()) {
+            tud_cdc_write(buf, (uint32_t)snprintf_ret);
+            tud_cdc_write_flush();
+            ESP_LOGD(TAG, "JSON emitted over USB-CDC: %d bytes", snprintf_ret);
+        } else {
+            /* Host not connected to CDC port - drop the frame. */
+            ESP_LOGD(TAG, "CDC not connected, dropping JSON frame (%d bytes)", snprintf_ret);
+        }
+#else
+        /* Write to UART0 (GPIO1 TX / GPIO3 RX, 115200 baud) for an external
+         * USB-UART bridge (CP210x / CH340 / FTDI). */
         uart_write_bytes(UART_NUM_0, buf, (size_t)snprintf_ret);
-        ESP_LOGD(TAG, "JSON emitted: %d bytes", snprintf_ret);
+        ESP_LOGD(TAG, "JSON emitted over UART0: %d bytes", snprintf_ret);
+#endif
     }
 }
 
@@ -295,8 +322,26 @@ void ground_bridge_init(void)
 {
     shadow_init();
     frag_init();
-    
-    /* Configure UART0 for USB-CDC output (115200 baud) */
+
+#if USE_NATIVE_USB_CDC
+    /* Initialize TinyUSB CDC for native ESP32-S3 USB-CDC (/dev/ttyACM0).
+     * The CDC ACM interface is handled by the TinyUSB stack; tud_cdc_write()
+     * / tud_cdc_write_flush() are used in emit_json(). */
+    {
+        esp_tinyusb_config_t tusb_cfg = {
+            .descriptor = NULL,   /* use TinyUSB default CDC descriptor */
+            .string_descriptor = NULL,
+            .external_phy = false,
+        };
+        esp_err_t err = esp_tinyusb_install(&tusb_cfg);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "esp_tinyusb_install failed: %d", err);
+        } else {
+            ESP_LOGI(TAG, "Native USB-CDC (TinyUSB CDC) initialized");
+        }
+    }
+#else
+    /* Configure UART0 for USB-CDC output via external bridge (115200 baud) */
     uart_config_t uart_cfg = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -307,8 +352,8 @@ void ground_bridge_init(void)
     };
     uart_param_config(UART_NUM_0, &uart_cfg);
     uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
-    
     ESP_LOGI(TAG, "Ground bridge ready (UART0 @ 115200)");
+#endif
 }
 
 void ground_bridge_process_frame(const uint8_t *buf, uint8_t len, int8_t rssi, int8_t snr)
@@ -365,9 +410,8 @@ void ground_bridge_process_frame(const uint8_t *buf, uint8_t len, int8_t rssi, i
         }
     }
     
-    /* Emit JSON for critical packets or heartbeat */
-    if (h.type == PKT_GPS_CRITICAL || h.type == PKT_RADAR_ALERT || 
-        h.type == PKT_STATUS_HEART) {
-        emit_json();
-    }
+    /* Emit JSON for every valid frame so the dashboard always sees fresh
+     * link quality (RSSI/SNR) and an incrementing packet seq. This keeps
+     * the connectivity indicators (signal bars, seq, last-contact) live. */
+    emit_json();
 }

@@ -52,6 +52,9 @@ extern "C" {
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
+/* Exported peripheral handles -----------------------------------------------*/
+extern I2C_HandleTypeDef hi2c1;
+
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */
@@ -93,7 +96,19 @@ void Error_Handler(void);
 #define LD2_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-
+/* LoRa SX126x pin definitions (Waveshare RFM95W/SX1262) */
+#define LORA_NSS_Pin GPIO_PIN_4
+#define LORA_NSS_GPIO_Port GPIOA
+#define LORA_BUSY_Pin GPIO_PIN_5
+#define LORA_BUSY_GPIO_Port GPIOA
+#define LORA_DIO1_Pin GPIO_PIN_6
+#define LORA_DIO1_GPIO_Port GPIOA
+#define LORA_TXEN_Pin GPIO_PIN_7
+#define LORA_TXEN_GPIO_Port GPIOA
+#define LORA_RXEN_Pin GPIO_PIN_8
+#define LORA_RXEN_GPIO_Port GPIOA
+#define LORA_NRST_Pin GPIO_PIN_9
+#define LORA_NRST_GPIO_Port GPIOA
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
