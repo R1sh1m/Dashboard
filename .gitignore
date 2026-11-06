@@ -14,6 +14,25 @@ dist-ssr
 *.local
 .cache
 .vite
+esp_receiver/build/
+
+# Firmware / embedded build output (Sender_station, STM32 toolchain)
+Sender_station/**/Debug/
+*.o
+*.d
+*.elf
+*.map
+*.list
+*.cyclo
+*.su
+objects.list
+objects.mk
+
+# Eclipse / STM32CubeIDE project files
+.cproject
+.mxproject
+.project
+.settings/
 
 # Editor & OS files
 .vscode/*
@@ -27,18 +46,12 @@ dist-ssr
 *.sw?
 Thumbs.db
 
-# Agent, Context & Local Design Specifications (Local Only per Project Architecture)
+# Local assets & media (keep Docs/ tracked)
+public/assets/
+
+# Agent & context local specs
 .agents/
-AGENTS.md
-DESIGN.md
 .context/
 context/
 opencode.json
 opencode.jsonc
-
-# Local assets & media (keep Docs/ tracked)
-public/assets/
-*.png
-*.jpeg
-*.jpg
-*.pdf

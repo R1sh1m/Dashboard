@@ -59,24 +59,26 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
       <div className="h-10 px-3 border-b border-white/10 flex items-center justify-between gap-2 select-none">
         <div className="flex items-center gap-2">
           <Terminal className="w-3.5 h-3.5 text-[#2997ff]" />
-          <span className="text-[11px] font-semibold tracking-wider text-neutral-300 uppercase">
+          <span className="text-base font-semibold tracking-wider text-neutral-300 uppercase">
             LIVE TELEMETRY LOGS
           </span>
-          <span className="text-[10px] font-mono text-neutral-400">
+          <span className="text-sm font-mono text-neutral-300">
             ({filteredLogs.length})
           </span>
         </div>
 
         <div className="flex items-center gap-1.5">
-          <div className="flex items-center bg-black/30 rounded-lg p-0.5 border border-white/10 text-[10px]">
+          <div className="flex items-center bg-black/30 rounded-lg p-0.5 border border-white/10 text-sm">
             {(['ALL', 'INFO', 'WARN', 'ERR'] as const).map((lvl) => (
               <button
                 key={lvl}
                 onClick={() => setFilterLevel(lvl)}
-                className={`px-1.5 py-0.5 rounded font-mono transition-all ${
+                aria-pressed={filterLevel === lvl}
+                aria-label={`Filter by ${lvl} level`}
+                className={`min-hit-target px-1.5 py-0.5 rounded font-mono transition-all ${
                   filterLevel === lvl
                     ? 'bg-white/20 text-white font-semibold'
-                    : 'text-neutral-400 hover:text-white'
+                    : 'text-neutral-300 hover:text-white'
                 }`}
               >
                 {lvl}
@@ -85,21 +87,23 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
           </div>
 
           <div className="relative flex items-center">
-            <Search className="w-3 h-3 text-neutral-400 absolute left-2 pointer-events-none" />
+            <Search className="w-3 h-3 text-neutral-300 absolute left-2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="bg-black/30 border border-white/10 rounded-lg pl-6 pr-2 py-0.5 text-[10px] text-white placeholder-neutral-500 focus:outline-none focus:border-[#007AFF] w-20 md:w-28"
+              className="bg-black/30 border border-white/10 rounded-lg pl-6 pr-2 py-0.5 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#0A84FF] w-20 md:w-28"
             />
           </div>
 
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`p-1 rounded border transition-colors ${
-              autoScroll ? 'bg-white/20 text-[#2997ff] border-white/20' : 'bg-transparent text-neutral-400 border-transparent hover:bg-white/5'
+            className={`min-hit-target p-1 rounded border transition-colors ${
+              autoScroll ? 'bg-white/20 text-[#2997ff] border-white/20' : 'bg-transparent text-neutral-300 border-transparent hover:bg-white/5'
             }`}
+            aria-pressed={autoScroll}
+            aria-label={autoScroll ? 'Unlock auto-scroll' : 'Lock auto-scroll'}
             title="Auto-scroll lock"
           >
             <ArrowDown className="w-3 h-3" />
@@ -107,7 +111,8 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
 
           <button
             onClick={exportLogsAsJson}
-            className="p-1 rounded hover:bg-white/10 text-neutral-300 transition-colors"
+            className="min-hit-target p-1 rounded hover:bg-white/10 text-neutral-300 transition-colors"
+            aria-label="Export logs as JSON"
             title="Export logs as JSON"
           >
             <Download className="w-3 h-3" />
@@ -115,7 +120,8 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
 
           <button
             onClick={onClearLogs}
-            className="p-1 rounded hover:bg-white/10 text-neutral-400 hover:text-red-400 transition-colors"
+            className="min-hit-target p-1 rounded hover:bg-white/10 text-neutral-300 hover:text-[#FF453A] transition-colors"
+            aria-label="Clear all logs"
             title="Clear all logs"
           >
             <Trash2 className="w-3 h-3" />
@@ -125,7 +131,7 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
 
       <div
         ref={containerRef}
-        className="flex-1 p-2.5 overflow-y-auto font-mono text-[11px] leading-relaxed flex flex-col gap-1 bg-black/40"
+        className="flex-1 p-2.5 overflow-y-auto font-mono text-base leading-relaxed flex flex-col gap-1 bg-black/40"
       >
         {filteredLogs.length === 0 ? (
           <div className="text-neutral-500 text-center py-8">
@@ -136,9 +142,9 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
             const timeStr = new Date(entry.timestamp).toLocaleTimeString();
             return (
               <div key={entry.id} className="flex items-start gap-2 hover:bg-white/5 px-1 py-0.5 rounded">
-                <span className="text-neutral-500 select-none text-[10px]">{timeStr}</span>
+                <span className="text-neutral-500 select-none text-sm">{timeStr}</span>
                 <span
-                  className="font-bold text-[10px] px-1 rounded-md select-none uppercase"
+                  className="font-bold text-sm px-1 rounded-md select-none uppercase"
                   style={{
                     color: getLevelColor(entry.level),
                     backgroundColor: `${getLevelColor(entry.level)}18`,
@@ -146,7 +152,7 @@ export const LogTerminal: React.FC<LogTerminalProps> = ({ logs, onClearLogs }) =
                 >
                   {entry.level}
                 </span>
-                <span className="text-[#bf5af2] text-[10px] select-none font-semibold">
+                <span className="text-[#bf5af2] text-sm select-none font-semibold">
                   [{entry.subsystem}]
                 </span>
                 <span className="text-neutral-200 break-all">{entry.message}</span>

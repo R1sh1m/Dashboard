@@ -28,6 +28,8 @@
   --hairline-dark: rgba(255, 255, 255, 0.12);
 
   --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+
+  --sidebar-width: 190px;
 }
 
 * {
@@ -81,6 +83,10 @@ body {
   gap: 6px;
   border: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
@@ -168,6 +174,31 @@ body {
   margin: 0 !important;
   padding: 0 !important;
   box-shadow: none !important;
+  image-rendering: auto !important; /* Smooth upsampling at deep zoom levels. */
+}
+
+/* Fix sub-pixel rendering gaps */
+.leaflet-tile-pane {
+  image-rendering: auto !important; /* Smooth upsampling at deep zoom levels. */
+}
+
+/* Ensure tiles render without gaps */
+.leaflet-layer {
+  image-rendering: auto !important; /* Smooth upsampling at deep zoom levels. */
+}
+
+/* Prevent tile gaps during zoom/pan */
+.leaflet-zoom-animated {
+  transform-origin: 0 0;
+}
+
+.leaflet-viewport {
+  outline: 1px solid transparent;
+}
+
+/* Fix for retina displays */
+.leaflet-retina .leaflet-tile {
+  image-rendering: auto !important; /* Smooth upsampling at deep zoom levels. */
 }
 
 .dark-tiles .leaflet-tile {
@@ -493,6 +524,29 @@ body {
   .maps-shell *, .maps-shell *::before, .maps-shell *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
+/* Apple HIG minimum hit target: 44x44pt */
+.min-hit-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Focus states for keyboard navigation */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-primary-dark);
+  outline-offset: 2px;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
@@ -515,7 +569,7 @@ body {
   position: fixed;
   inset-y: 0;
   left: 0;
-  width: 260px;
+  width: 220px;
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -620,7 +674,7 @@ body {
   inset: 0;
   z-index: 45;
   background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(4px);
+  /* Removed backdrop-filter to prevent map blur - only the sheet itself should blur */
 }
 
 .sheet-header {
@@ -634,6 +688,29 @@ body {
   flex-shrink: 0;
 }
 
+.sheet-close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  color: #d7d7dc;
+  background: rgba(255,255,255,.06);
+  cursor: pointer;
+}
+
+.sheet-close:hover {
+  color: #fff;
+  background: rgba(255,255,255,.14);
+}
+
+.sheet-close:focus-visible,
+.telemetry-tab:focus-visible {
+  outline: 2px solid #0a84ff;
+  outline-offset: 2px;
+}
+
 .sheet-title {
   font-size: 15px;
   font-weight: 600;
@@ -642,13 +719,13 @@ body {
 }
 
 .sheet-body {
-  flex: 1;
   overflow-y: auto;
   padding: 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   background: rgba(0, 0, 0, 0.15);
+  /* Removed flex:1 so body sizes to content instead of forcing empty vertical space */
 }
 
 .sheet-footer {
@@ -666,7 +743,7 @@ body {
 .slim-header {
   position: fixed;
   top: 0;
-  left: 260px;
+  left: 220px;
   right: 0;
   height: 52px;
   z-index: 55;
@@ -697,6 +774,7 @@ body {
 .search-pill span:first-child {
   color: #8e8e93;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 /* Ensure map fills the whole screen behind chrome */
@@ -710,7 +788,7 @@ body {
 
 .maps-shell .sidebar {
   inset: 0 auto 0 0;
-  width: 228px;
+  width: var(--sidebar-width);
   height: 100vh;
   background: rgba(18, 24, 32, 0.94);
   border-right-color: rgba(255,255,255,.08);
@@ -718,6 +796,7 @@ body {
   border-left: 0;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  z-index: 55;
 }
 .maps-shell .sidebar .sidebar-brand {
   flex-direction: row;
@@ -768,44 +847,120 @@ body {
   color: #fff;
   background: rgba(255,255,255,.09);
 }
+.sidebar-nav-subitem {
+  min-height: 40px;
+  padding-left: 26px;
+  color: #aeb2ba;
+  font-size: 12px;
+}
+.sidebar-nav-subitem svg { color: #8e8e93; }
 .sidebar-nav-item.active svg { color: #0a84ff; }
 .maps-shell .sidebar-row { padding: 10px 8px; }
 .maps-shell .sidebar-footer { padding: 16px 20px; }
 .maps-shell .maps-ui { pointer-events: none; }
 .maps-shell .map-controls, .maps-shell .zoom-controls { pointer-events: auto; }
 .maps-shell .map-controls, .maps-shell .zoom-controls { right: 22px; }
-.maps-shell .coordinate-pill { left: 250px; right: 22px; width: max-content; }
+.maps-shell .coordinate-pill { left: 210px; right: 22px; width: max-content; }
 .maps-shell .telemetry-glance { right: 22px; left: auto; }
-.maps-shell .map-full { transition: left 360ms cubic-bezier(.2,.8,.2,1); }
-.maps-shell.sensor-open .map-full { left: 708px; }
+
 .maps-shell.sensor-open .map-controls, .maps-shell.sensor-open .zoom-controls { right: 22px; }
-.maps-shell .lkl-banner {
+/* Collapsible Last Known Location button */
+.lkl-btn {
   position: absolute;
-  top: 16px;
-  left: 50%;
-  z-index: 65;
+  top: 38px;
+  right: 22px;
+  z-index: 50;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(255, 69, 58, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 5px 18px rgba(255, 69, 58, 0.25);
+  color: #fff;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 14px;
-  border: 1px solid rgba(255,255,255,.18);
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: auto;
+  transition: width 400ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              border-radius 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity 200ms ease;
+}
+
+.lkl-btn.collapsed {
+  justify-content: center;
+  padding: 0;
+}
+
+.lkl-btn.expanded {
+  width: 240px;
   border-radius: 999px;
-  color: #fff;
-  background: rgba(255,69,58,.92);
-  box-shadow: 0 8px 26px rgba(0,0,0,.25);
-  transform: translateX(-50%);
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.lkl-btn .lkl-label {
   font-size: 11px;
   font-weight: 600;
-  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 200ms ease, transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  text-align: center;
+  white-space: nowrap;
 }
-.lkl-time { opacity: .8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 400; }
+
+.lkl-btn.expanded .lkl-label {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.lkl-btn .lkl-icon {
+  position: relative;
+  z-index: 1;
+  display: block;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: #fff;
+  stroke: currentColor;
+  opacity: 1;
+}
+
+.lkl-btn.collapsed .lkl-label {
+  display: none;
+}
+
+/* Subtle pulse animation for collapsed state to draw attention */
+@keyframes lkl-btn-pulse {
+  0%, 100% {
+    box-shadow: 0 5px 18px rgba(255, 69, 58, 0.25);
+  }
+  50% {
+    box-shadow: 0 5px 24px rgba(255, 69, 58, 0.45);
+  }
+}
+
+.lkl-btn.collapsed {
+  animation: lkl-btn-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lkl-btn {
+    animation: none;
+  }
+}
 .telemetry-sheet {
-  left: 228px;
+  left: var(--sidebar-width);
   right: auto;
   top: 0;
   bottom: 0;
   height: 100vh;
-  width: 480px;
+  width: min(420px, calc(100vw - var(--sidebar-width) - 24px));
+  max-width: none;
   border-left: 0;
   border-right: 1px solid rgba(255,255,255,.10);
   transform: translateX(-18px);
@@ -813,21 +968,192 @@ body {
   transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 260ms ease;
 }
 .telemetry-sheet.is-open { transform: translateX(0); opacity: 1; }
+
+/* POI panel — pops out from the sidebar edge like telemetry */
+.poi-panel {
+  position: fixed;
+  inset-y: 0;
+  left: var(--sidebar-width);
+  right: auto;
+  height: 100vh;
+  width: 100%;
+  width: min(420px, calc(100vw - var(--sidebar-width) - 24px));
+  max-width: none;
+  border-left: 0;
+  border-right: 1px solid rgba(255,255,255,0.10);
+  background: rgba(20, 20, 22, 0.72);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.35);
+  transform: translateX(-100%);
+  opacity: 0;
+  transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 260ms ease;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+.poi-panel.is-open {
+  transform: translateX(0);
+  opacity: 1;
+}
+.poi-panel .sheet-header { background: rgba(36,38,43,.9); }
 .telemetry-sheet .sheet-header { background: rgba(36,38,43,.9); }
 .telemetry-sheet .sheet-title { font-size: 18px; }
 .telemetry-sheet .sheet-body { background: rgba(25,27,31,.82); }
 .telemetry-sheet .sheet-footer { background: rgba(18,19,22,.94); }
-.sheet-overlay { opacity: 0; animation: overlay-in 240ms ease forwards; }
-@keyframes overlay-in { to { opacity: 1; } }
+
+.telemetry-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  background: rgba(255,255,255,.05);
+}
+
+.telemetry-tab {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 5px;
+  border: 0;
+  border-radius: 9px;
+  color: #d4d4d8;
+  background: transparent;
+  cursor: pointer;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.telemetry-tab svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.telemetry-tab:hover {
+  color: #fff;
+  background: rgba(255,255,255,.1);
+}
+
+.telemetry-tab[aria-selected="true"] {
+  color: #fff;
+  background: #0a84ff;
+  box-shadow: 0 2px 8px rgba(10,132,255,.28);
+}
+
+.poi-category-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.poi-category {
+  min-width: 0;
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 10px;
+  color: #c9c9ce;
+  background: rgba(255,255,255,.05);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.poi-category svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.poi-category:hover,
+.poi-category:focus-visible {
+  color: #fff;
+  background: rgba(255,255,255,.12);
+}
+
+.poi-list-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.poi-list-section h2 {
+  margin: 0;
+  color: #f5f5f7;
+  font-size: 15px;
+}
+
+.poi-empty {
+  margin: 0;
+  color: #9999a1;
+  font-size: 12px;
+}
+
+.poi-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.poi-list-item {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(255,255,255,.05);
+  cursor: pointer;
+  text-align: left;
+}
+
+.poi-list-item:hover {
+  background: rgba(255,255,255,.11);
+}
+
+.poi-list-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+}
+
+.poi-list-icon svg { width: 17px; height: 17px; }
+.poi-list-copy { min-width: 0; flex: 1; }
+.poi-list-copy strong,
+.poi-list-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poi-list-copy strong { font-size: 12px; }
+.poi-list-copy small { margin-top: 2px; color: #9999a1; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.poi-list-arrow { color: #0a84ff; font-size: 20px; }
+
 @media (max-width: 760px) {
-  .maps-shell .sidebar { width: 190px; }
+  :root { --sidebar-width: 170px; }
   .maps-shell .sidebar .sidebar-brand { padding: 20px 14px 18px; }
   .artemis-logo-frame { width: 38px; height: 38px; flex-basis: 38px; }
   .artemis-logo-frame img { width: 190px !important; height: 56px !important; transform: translate(-72px, -9px); }
   .maps-shell .sidebar-brand strong { font-size: 16px; }
   .maps-shell .map-controls, .maps-shell .zoom-controls { right: 12px; }
-  .maps-shell .coordinate-pill { left: 202px; right: 12px; max-width: calc(100vw - 214px); }
-  .maps-shell.sensor-open .map-full { left: 0; }
-  .telemetry-sheet { left: 190px; width: calc(100vw - 190px); max-width: none; }
-  .maps-shell .lkl-banner { left: calc(50% + 95px); max-width: calc(100vw - 220px); white-space: nowrap; overflow: hidden; }
+  .maps-shell .coordinate-pill { left: 182px; right: 12px; max-width: calc(100vw - 182px); }
+
+  .telemetry-sheet, .poi-panel { left: var(--sidebar-width); width: calc(100vw - var(--sidebar-width)); max-width: none; }
+  .telemetry-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .poi-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lkl-btn { right: 12px; }
+
 }

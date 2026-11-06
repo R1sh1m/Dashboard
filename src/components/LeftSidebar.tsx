@@ -1,5 +1,14 @@
 import React from 'react';
-import { Bookmark, Home, Settings } from 'lucide-react';
+import {
+  Bookmark,
+  CloudSun,
+  Home,
+  Radio,
+  Radar,
+  Settings,
+  TerminalSquare,
+} from 'lucide-react';
+import type { SubsystemTab } from './SensorSheet';
 
 type SerialStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
 
@@ -7,7 +16,10 @@ interface LeftSidebarProps {
   botState: string;
   isEStop: boolean;
   serialStatus: SerialStatus;
+  activeNav: 'home' | 'saved' | 'telemetry';
+  setActiveNav: (tab: 'home' | 'saved' | 'telemetry') => void;
   onOpenSensors: () => void;
+  onOpenPanel?: (tab: SubsystemTab) => void;
   onHome: () => void;
   onSavePoi: () => void;
 }
@@ -34,7 +46,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   botState,
   isEStop,
   serialStatus,
+  activeNav,
+  setActiveNav,
   onOpenSensors,
+  onOpenPanel = onOpenSensors,
   onHome,
   onSavePoi,
 }) => {
@@ -44,7 +59,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     : robotStyle.animate
       ? robotStyle.animate
       : 'bg-[#ffd60a]';
-  const effectiveText = isEStop ? 'E-STOP' : robotStyle.text;
+  const effectiveText = isEStop ? 'E-STOP' : botState;
 
   const linkStyle = LINK_PILL[serialStatus];
 
@@ -59,75 +74,72 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
       <div className="sidebar-body">
         <div className="sidebar-navigation" aria-label="Ground station navigation">
-          <button className="sidebar-nav-item active" onClick={onHome}>
+          <button
+            className={`sidebar-nav-item${activeNav === 'home' ? ' active' : ''}`}
+            onClick={() => { setActiveNav('home'); onHome(); }}
+            aria-current={activeNav === 'home' ? 'page' : undefined}
+          >
             <Home size={18} />
             <span>Home</span>
           </button>
-          <button className="sidebar-nav-item" onClick={onSavePoi}>
+          <button
+            className={`sidebar-nav-item${activeNav === 'saved' ? ' active' : ''}`}
+            onClick={() => { setActiveNav('saved'); onSavePoi(); }}
+            aria-current={activeNav === 'saved' ? 'page' : undefined}
+          >
             <Bookmark size={18} />
-            <span>Saved locations</span>
+            <span>Points of interest</span>
           </button>
-          <button className="sidebar-nav-item" onClick={onOpenSensors}>
+          <button
+            className={`sidebar-nav-item${activeNav === 'telemetry' ? ' active' : ''}`}
+            onClick={() => { setActiveNav('telemetry'); onOpenSensors(); }}
+            aria-current={activeNav === 'telemetry' ? 'page' : undefined}
+          >
             <Settings size={18} />
             <span>Telemetry</span>
           </button>
+          {([
+            ['env', 'Environment sensors', CloudSun],
+            ['link', 'LoRa wireless link', Radio],
+            ['radar', 'Radar', Radar],
+            ['logs', 'Telemetry logs', TerminalSquare],
+          ] as [SubsystemTab, string, React.ComponentType<{ size?: number }>][]).map(([tab, label, Icon]) => (
+            <button
+              key={tab}
+              className="sidebar-nav-item sidebar-nav-subitem"
+              onClick={() => { setActiveNav('telemetry'); onOpenPanel(tab); }}
+            >
+              <Icon size={16} />
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
-        <div className="sidebar-row">
+      </div>
+
+      <div className="sidebar-footer">
+        <div className="flex flex-col items-end gap-2 mb-3">
           <span
-            style={{
-              fontSize: '10px',
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              color: '#a3a3a3',
-            }}
-          >
-            ROBOT
-          </span>
-          <span
-            className={`pill inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-medium`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative`}
             style={{
               backgroundColor: robotStyle.bg,
               borderColor: robotStyle.border,
               color: robotStyle.text,
             }}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${effectiveDot}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${effectiveDot} absolute left-3`} />
             {effectiveText}
           </span>
-        </div>
-
-        <div className="sidebar-row">
           <span
-            style={{
-              fontSize: '10px',
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              color: '#a3a3a3',
-            }}
-          >
-            LINK
-          </span>
-          <span
-            className={`pill inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-medium`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative`}
             style={{
               backgroundColor: linkStyle.bg,
               borderColor: linkStyle.border,
               color: linkStyle.text,
             }}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${linkStyle.animate || ''}`} />
-            {linkStyle.text}
+            <span className={`w-1.5 h-1.5 rounded-full ${linkStyle.animate || ''} absolute left-3`} />
+            {serialStatus}
           </span>
-        </div>
-
-      </div>
-
-      <div className="sidebar-footer">
-        <div className="flex items-center gap-2 text-[10px] text-neutral-500 font-mono">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#0066cc]/40" />
-          v1.0.0
         </div>
       </div>
     </aside>

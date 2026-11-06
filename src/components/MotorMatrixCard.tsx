@@ -31,11 +31,11 @@ export const MotorMatrixCard: React.FC<MotorMatrixCardProps> = ({ motors }) => {
   return (
     <div className="glass-panel p-3.5 flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold tracking-wider text-neutral-400 uppercase flex items-center gap-1.5">
+        <span className="text-base font-semibold tracking-wider text-neutral-300 uppercase flex items-center gap-1.5">
           <Cog className="w-3.5 h-3.5 text-[#2997ff]" />
           18x ST3215 SERVO MATRIX
         </span>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-neutral-300">
+        <div className="flex items-center gap-2 text-sm font-mono text-neutral-300">
           <span>ACTIVE: {activeCount}/18</span>
           <span>•</span>
           <span style={{ color: getTempColor(maxTemp) }}>MAX: {maxTemp.toFixed(1)}°C</span>
@@ -55,10 +55,10 @@ export const MotorMatrixCard: React.FC<MotorMatrixCardProps> = ({ motors }) => {
               onClick={() => setSelectedLeg(selectedLeg === legIdx ? null : legIdx)}
               className="glass-panel-subtle p-2 flex flex-col gap-1 cursor-pointer hover:bg-white/10 transition-colors"
             >
-              <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center justify-between text-base">
                 <span className="font-semibold text-neutral-200">{leg.name}</span>
                 <span
-                  className="font-mono text-[10px]"
+                  className="font-mono text-sm"
                   style={{ color: getTempColor(legAvgTemp) }}
                 >
                   {legAvgTemp}°C
@@ -71,8 +71,8 @@ export const MotorMatrixCard: React.FC<MotorMatrixCardProps> = ({ motors }) => {
                   const load = servo?.load ?? 20;
                   return (
                     <div key={jIdx} className="bg-black/20 rounded p-1 text-center flex flex-col items-center">
-                      <span className="text-[9px] text-neutral-400">{joint}</span>
-                      <span className="text-[10px] font-mono font-semibold text-neutral-200">
+                      <span className="text-sm text-neutral-300">{joint}</span>
+                      <span className="text-sm font-mono font-semibold text-neutral-200">
                         {load}%
                       </span>
                       <div className="w-full h-1 bg-white/10 rounded-full mt-1 overflow-hidden">

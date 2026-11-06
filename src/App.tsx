@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Layers, Minus, Navigation2, Plus } from 'lucide-react';
+import { AlertTriangle, Layers, Minus, Navigation2, Plus, WifiOff } from 'lucide-react';
 import { MapView, type MapViewHandle } from './components/MapView';
 import { LeftSidebar } from './components/LeftSidebar';
 import { PoiModal } from './components/PoiModal';
-import { SensorSheet } from './components/SensorSheet';
+import { SensorSheet, type SubsystemTab } from './components/SensorSheet';
 import type { LogEntry, PointOfInterest, TelemetryPacket } from './types/telemetry';
 import { serialService, type SerialConnectionStatus } from './services/webSerial';
 import { MAP_TYPE_ORDER, type MapType } from './lib/mapLayers';
-
-type SubsystemTab = 'bot' | 'power' | 'motors' | 'env' | 'radar' | 'link' | 'logs';
 
 export function App() {
   const [telemetry, setTelemetry] = useState<TelemetryPacket | null>(null);
@@ -21,12 +19,15 @@ export function App() {
   const [isPoiModalOpen, setIsPoiModalOpen] = useState(false);
   const [isSensorSheetOpen, setIsSensorSheetOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SubsystemTab>('bot');
+  const [visibleTabs, setVisibleTabs] = useState<SubsystemTab[]>(['bot', 'power', 'motors']);
   const [now, setNow] = useState(() => Date.now());
   const [mapType, setMapType] = useState<MapType>(() => {
     if (typeof window === 'undefined') return 'osm';
     const stored = localStorage.getItem('artemis-map-type');
     return stored === 'satellite' || stored === 'terrain' || stored === 'osm' ? stored : 'osm';
   });
+  const [isLklExpanded, setIsLklExpanded] = useState(false);
+  const [activeNav, setActiveNav] = useState<'home' | 'saved' | 'telemetry'>('home');
   const mapRef = useRef<MapViewHandle>(null);
 
   useEffect(() => {
@@ -113,6 +114,24 @@ export function App() {
     return next;
   });
 
+  const handleHome = () => {
+    setIsSensorSheetOpen(false);
+    setIsPoiModalOpen(false);
+    setIsLklExpanded(false);
+    setActiveTab('bot');
+    mapRef.current?.recenterHome();
+    mapRef.current?.resetZoom();
+  };
+
+  const openTelemetryPanel = (tab: SubsystemTab) => {
+    setIsPoiModalOpen(false);
+    setActiveTab(tab);
+    setVisibleTabs(tab === 'bot' || tab === 'power' || tab === 'motors'
+      ? ['bot', 'power', 'motors']
+      : [tab]);
+    setIsSensorSheetOpen(true);
+  };
+
   return (
     <div className={`maps-shell ${isSensorSheetOpen ? 'sensor-open' : ''} relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans`}>
       <div className="map-full">
@@ -120,6 +139,25 @@ export function App() {
       </div>
       <a className="skip-link" href="#map-main">Skip to map</a>
       <main id="map-main" className="maps-ui" aria-label="Artemis ground station map">
+        {/* Collapsible Last Known Location button positioned above map controls */}
+        {(signalLost || gpsInvalid) && (
+          <button
+            className={`lkl-btn ${isLklExpanded ? 'expanded' : 'collapsed'}`}
+            onClick={() => setIsLklExpanded((prev) => !prev)}
+            aria-expanded={isLklExpanded}
+            aria-label={isLklExpanded ? 'Collapse last known location' : 'Last known location'}
+          >
+            {isLklExpanded ? (
+              <AlertTriangle className="lkl-icon" size={18} strokeWidth={2.5} aria-hidden="true" />
+            ) : (
+              <WifiOff className="lkl-icon" size={18} strokeWidth={2.5} aria-hidden="true" />
+            )}
+            <span className="lkl-label">
+              Last known location
+              {lastPacketTime ? ` · ${Math.round((now - lastPacketTime) / 1000)}s since contact` : ' · No signal'}
+            </span>
+          </button>
+        )}
         <div className="map-controls" aria-label="Map controls">
           <button className="map-control" onClick={cycleMapType} aria-label="Change map style"><Layers size={18} /></button>
           <button className="map-control" onClick={() => mapRef.current?.recenterHome()} aria-label="Center on home base"><Navigation2 size={18} /></button>
@@ -133,20 +171,23 @@ export function App() {
         botState={botState}
         isEStop={isEStop}
         serialStatus={serialStatus}
-        onOpenSensors={() => setIsSensorSheetOpen(true)}
-        onHome={() => mapRef.current?.recenterHome()}
-        onSavePoi={() => setIsPoiModalOpen(true)}
+        activeNav={activeNav}
+        setActiveNav={setActiveNav}
+        onOpenSensors={() => {
+          setIsPoiModalOpen(false);
+          setVisibleTabs(['bot', 'power', 'motors']);
+          setActiveTab('bot');
+          setIsSensorSheetOpen((prev) => !prev);
+        }}
+        onOpenPanel={openTelemetryPanel}
+        onHome={handleHome}
+        onSavePoi={() => {
+          setIsSensorSheetOpen(false);
+          setIsPoiModalOpen((prev) => !prev);
+        }}
       />
-      {(signalLost || gpsInvalid) && (
-        <div className="lkl-banner" role="status">
-          <AlertTriangle size={16} />
-          <span>LAST KNOWN LOCATION</span>
-          <span className="lkl-time">{lastPacketTime ? `${Math.round((now - lastPacketTime) / 1000)}s since contact` : 'NO SIGNAL'}</span>
-        </div>
-      )}
       <SensorSheet
         isOpen={isSensorSheetOpen}
-        onClose={() => setIsSensorSheetOpen(false)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         telemetry={telemetry}
@@ -157,8 +198,17 @@ export function App() {
         onConnectSerial={connectSerial}
         onDisconnectSerial={disconnectSerial}
         onTriggerEStop={triggerEStop}
+        visibleTabs={visibleTabs}
       />
-      <PoiModal isOpen={isPoiModalOpen} onClose={() => setIsPoiModalOpen(false)} currentLat={curLat} currentLng={curLng} onSavePoi={addManualPoi} />
+      <PoiModal
+        isOpen={isPoiModalOpen}
+        onClose={() => setIsPoiModalOpen(false)}
+        currentLat={curLat}
+        currentLng={curLng}
+        onSavePoi={addManualPoi}
+        pois={pois}
+        onSelectPoi={(poi) => mapRef.current?.goToLocation(poi.lat, poi.lng)}
+      />
     </div>
   );
 }

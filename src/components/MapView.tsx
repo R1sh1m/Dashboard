@@ -27,6 +27,8 @@ interface MapViewProps {
 export interface MapViewHandle {
   recenterRobot: () => void;
   recenterHome: () => void;
+  goToLocation: (lat: number, lng: number) => void;
+  resetZoom: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
 }
@@ -60,6 +62,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     const map = L.map(mapContainerRef.current, {
       center: [initialLatRef.current, initialLngRef.current],
       zoom: 18,
+      maxZoom: 22, // Deep zoom allowed; tiles are upscaled beyond native resolution.
       zoomControl: false,
       attributionControl: false,
     });
@@ -139,9 +142,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       const robotHtml = `
         <div style="position: relative; transform: rotate(${heading}deg); transition: transform 0.2s ease-out; width: 34px; height: 34px;">
           <div style="width: 34px; height: 34px; background: rgba(0,122,255,0.16); border: 1px solid rgba(0,122,255,0.4); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-            <div style="width: 10px; height: 10px; background: #007AFF; border-radius: 50%;"></div>
+            <div style="width: 10px; height: 10px; background: #0A84FF; border-radius: 50%;"></div>
           </div>
-          <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 7px solid #007AFF;"></div>
+          <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 7px solid #0A84FF;"></div>
         </div>
       `;
 
@@ -161,7 +164,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 8px; min-width: 160px;">
               <div style="font-weight: 600; font-size: 13px;">Artemis Hexapod</div>
               <div style="font-size: 11px; color: #666; margin-top: 2px;">Lat: ${gps.lat.toFixed(6)}<br/>Lng: ${gps.lng.toFixed(6)}</div>
-              <div style="font-size: 11px; color: #007AFF; margin-top: 4px;">Speed: ${gps.speed_mps} m/s | Alt: ${gps.alt_m}m</div>
+              <div style="font-size: 11px; color: #0A84FF; margin-top: 4px;">Speed: ${gps.speed_mps} m/s | Alt: ${gps.alt_m}m</div>
             </div>
           `);
       } else {
@@ -325,6 +328,10 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
   };
 
+  const goToLocation = (lat: number, lng: number) => {
+    mapInstanceRef.current?.setView([lat, lng], Math.max(mapInstanceRef.current.getZoom(), 18), { animate: true });
+  };
+
   const zoomIn = () => {
     mapInstanceRef.current?.zoomIn();
   };
@@ -333,9 +340,15 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     mapInstanceRef.current?.zoomOut();
   };
 
+  const resetZoom = () => {
+    mapInstanceRef.current?.setZoom(18);
+  };
+
   useImperativeHandle(ref, () => ({
     recenterRobot,
     recenterHome,
+    goToLocation,
+    resetZoom,
     zoomIn,
     zoomOut,
   }));

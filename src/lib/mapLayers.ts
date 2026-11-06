@@ -18,15 +18,21 @@ export function getTileLayer(mapType: MapType): L.TileLayer {
   let layer = tileLayerCache[mapType];
   if (!layer) {
     const preset = MAP_LAYERS[mapType];
+    // Allow deep zoom by upsampling tiles beyond their native resolution.
+    // maxNativeZoom = highest zoom where tiles actually exist.
+    // maxZoom = how far the user can zoom (Leaflet will reuse & scale the highest-res tiles).
     const tileLayerOptions = {
-      detectRetina: true,
+      // Retina mode adds one to the requested tile zoom, which exceeds OSM's
+      // native limit when the map is already at a deep zoom level.
+      detectRetina: false,
       reuseTiles: true,
-      updateWhenIdle: false,
-      updateInterval: 150,
+      updateWhenIdle: true,
+      updateWhenZooming: true,
+      keepBuffer: 4,
       maxNativeZoom: preset.maxZoom,
+      maxZoom: 22, // Allow deep zoom; Leaflet will upsample tiles beyond maxNativeZoom.
     };
     layer = L.tileLayer(preset.url, {
-      maxZoom: 24,
       attribution: preset.attribution,
       ...tileLayerOptions,
     });

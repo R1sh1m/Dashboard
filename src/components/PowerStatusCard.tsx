@@ -26,11 +26,11 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power }) => {
   return (
     <div className="glass-panel p-3.5 flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold tracking-wider text-neutral-400 uppercase flex items-center gap-1.5">
+        <span className="text-base font-semibold tracking-wider text-neutral-300 uppercase flex items-center gap-1.5">
           <BatteryCharging className="w-3.5 h-3.5 text-[#30d158]" />
           3S LIPO POWER SYSTEM
         </span>
-        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
+        <span className="text-sm font-mono px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
           11.1V / 10,000 mAh
         </span>
       </div>
@@ -38,16 +38,16 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power }) => {
       <div className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[22px] font-mono font-bold text-white leading-none">
+            <span className="text-4xl font-mono font-bold text-white leading-none">
               {voltage.toFixed(2)}
             </span>
-            <span className="text-[12px] text-neutral-400 font-medium">V</span>
-            <span className="text-[12px] text-neutral-400 ml-2 font-mono">
+            <span className="text-lg text-neutral-300 font-medium">V</span>
+            <span className="text-lg text-neutral-300 ml-2 font-mono">
               ({current.toFixed(2)} A)
             </span>
           </div>
           <span
-            className="text-[14px] font-mono font-bold"
+            className="text-2xl font-mono font-bold"
             style={{ color: getPercentColor(percent) }}
           >
             {percent}%
@@ -68,15 +68,15 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power }) => {
       <div className="grid grid-cols-3 gap-1.5 pt-1">
         {cells.map((cellV, idx) => (
           <div key={idx} className="glass-panel-subtle p-1.5 text-center flex flex-col">
-            <span className="text-[9px] text-neutral-400 uppercase">CELL {idx + 1}</span>
-            <span className="text-[12px] font-mono font-semibold text-neutral-200 mt-0.5">
+            <span className="text-sm text-neutral-300 uppercase">CELL {idx + 1}</span>
+            <span className="text-lg font-mono font-semibold text-neutral-200 mt-0.5">
               {cellV.toFixed(2)}V
             </span>
           </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between text-[10px] px-1 text-neutral-400 font-mono">
+      <div className="flex items-center justify-between text-sm px-1 text-neutral-300 font-mono">
         <span>CELL DELTA: Δ{deltaCell}V</span>
         <span className={isImbalanced ? 'text-[#ff453a] font-bold' : 'text-[#30d158]'}>
           {isImbalanced ? 'UNBALANCED' : 'BALANCED'}
