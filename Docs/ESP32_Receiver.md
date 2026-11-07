@@ -42,7 +42,7 @@ C:\esp\v6.0.2\esp-idf\export.ps1
 
 ```powershell
 # 1. Navigate to the ESP32 receiver project
-cd C:\Users\Rishi Misra\Desktop\Study Folder\Team Artemis (2026-27)\Dashboard\esp_receiver
+cd esp_receiver
 
 # 2. Set target (ESP32-S3)
 idf.py set-target esp32s3

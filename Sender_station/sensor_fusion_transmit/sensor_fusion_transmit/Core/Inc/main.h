@@ -54,6 +54,11 @@ void Error_Handler(void);
 
 /* Exported peripheral handles -----------------------------------------------*/
 extern I2C_HandleTypeDef hi2c1;
+extern I2C_HandleTypeDef hi2c2;
+extern I2C_HandleTypeDef hi2c3;
+extern UART_HandleTypeDef huart2;
+extern UART_HandleTypeDef huart3;
+extern UART_HandleTypeDef huart5;
 
 /* USER CODE BEGIN EFP */
 
@@ -96,19 +101,19 @@ extern I2C_HandleTypeDef hi2c1;
 #define LD2_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-/* LoRa SX126x pin definitions (Waveshare RFM95W/SX1262) */
+/* LoRa SX126x pin definitions per Docs/STM32_Sender.md */
 #define LORA_NSS_Pin GPIO_PIN_4
 #define LORA_NSS_GPIO_Port GPIOA
-#define LORA_BUSY_Pin GPIO_PIN_5
-#define LORA_BUSY_GPIO_Port GPIOA
-#define LORA_DIO1_Pin GPIO_PIN_6
-#define LORA_DIO1_GPIO_Port GPIOA
-#define LORA_TXEN_Pin GPIO_PIN_7
-#define LORA_TXEN_GPIO_Port GPIOA
-#define LORA_RXEN_Pin GPIO_PIN_8
-#define LORA_RXEN_GPIO_Port GPIOA
-#define LORA_NRST_Pin GPIO_PIN_9
-#define LORA_NRST_GPIO_Port GPIOA
+#define LORA_BUSY_Pin GPIO_PIN_13
+#define LORA_BUSY_GPIO_Port GPIOF
+#define LORA_DIO1_Pin GPIO_PIN_9
+#define LORA_DIO1_GPIO_Port GPIOE
+#define LORA_TXEN_Pin GPIO_PIN_14
+#define LORA_TXEN_GPIO_Port GPIOF
+#define LORA_RXEN_Pin GPIO_PIN_13
+#define LORA_RXEN_GPIO_Port GPIOE
+#define LORA_NRST_Pin GPIO_PIN_11
+#define LORA_NRST_GPIO_Port GPIOE
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

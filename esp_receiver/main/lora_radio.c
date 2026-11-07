@@ -1,6 +1,6 @@
 /**
  * @file lora_radio.c
- * @brief ESP32-S3 HAL for SX126x LoRa transceiver
+ * @brief ESP32 HAL for SX126x LoRa transceiver
  * 
  * Ported from STM32 version to use ESP-IDF SPI master and GPIO APIs.
  * Implements the same radio_init/send/poll interface for compatibility.
@@ -21,17 +21,17 @@
 static const char *TAG = "lora_radio";
 
 /* ============================================================================
- * ESP32-S3 GPIO Pin Definitions (adjust per your board)
+ * ESP32 GPIO Pin Definitions (matches Docs/ESP32_Receiver.md pinout)
  * ============================================================================
  */
-#define PIN_NSS     GPIO_NUM_5
+#define PIN_NSS     GPIO_NUM_15   /* GPIO5 is a strapping pin on ESP32-S3 - conflict with flash */
 #define PIN_SCK     GPIO_NUM_18
-#define PIN_MOSI    GPIO_NUM_23
+#define PIN_MOSI    GPIO_NUM_23   /* GPIO11 conflicts with SPI flash on ESP32 */
 #define PIN_MISO    GPIO_NUM_19
 #define PIN_RESET   GPIO_NUM_14
-#define PIN_BUSY    GPIO_NUM_27   /* matches Docs/ESP32_Receiver.md pinout */
-#define PIN_DIO1    GPIO_NUM_26   /* matches Docs/ESP32_Receiver.md pinout */
-#define PIN_TXEN    GPIO_NUM_25   /* Optional, if LORA_USE_RXTX_PINS */
+#define PIN_BUSY    GPIO_NUM_13
+#define PIN_DIO1    GPIO_NUM_4
+#define PIN_TXEN    GPIO_NUM_26   /* Optional, if LORA_USE_RXTX_PINS */
 #define PIN_RXEN    GPIO_NUM_33   /* Optional, if LORA_USE_RXTX_PINS */
 
 /* ============================================================================
@@ -125,7 +125,8 @@ int sx126x_hal_write(const uint8_t *cmd, uint16_t cmd_len,
     spi_transaction_t trans = {
         .length = cmd_len * 8,
         .tx_buffer = cmd,
-        .flags = SPI_TRANS_CS_KEEP_ACTIVE
+        .rx_buffer = NULL,
+        .flags = 0
     };
     ret = spi_device_transmit(spi_dev, &trans);
     if (ret != ESP_OK) {
@@ -137,6 +138,7 @@ int sx126x_hal_write(const uint8_t *cmd, uint16_t cmd_len,
     if (data_len > 0) {
         trans.length = data_len * 8;
         trans.tx_buffer = data;
+        trans.rx_buffer = NULL;
         trans.flags = 0;
         ret = spi_device_transmit(spi_dev, &trans);
         if (ret != ESP_OK) {
@@ -164,7 +166,8 @@ int sx126x_hal_read(const uint8_t *cmd, uint16_t cmd_len,
     spi_transaction_t trans = {
         .length = cmd_len * 8,
         .tx_buffer = cmd,
-        .flags = SPI_TRANS_CS_KEEP_ACTIVE
+        .rx_buffer = NULL,
+        .flags = 0
     };
     ret = spi_device_transmit(spi_dev, &trans);
     if (ret != ESP_OK) {
@@ -271,7 +274,7 @@ int radio_init(void)
     spi_device_interface_config_t dev_cfg = {
         .clock_speed_hz = 2000000, /* 2 MHz (conservative) */
         .mode = 0,
-        .spics_io_num = PIN_NSS,
+        .spics_io_num = -1,        /* NSS managed manually via GPIO, not by SPI driver */
         .queue_size = 1,
         .flags = SPI_DEVICE_NO_DUMMY
     };

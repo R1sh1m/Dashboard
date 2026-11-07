@@ -12,7 +12,7 @@ export interface GpsData {
   lat: number;
   lng: number;
   alt_m: number;
-  fix: number; // 0=No fix, 1=2D, 2=3D, 3=DGPS/RTK
+  fix: number; // u-blox NAV-PVT fixType: 0=No fix, 1=Dead reckoning, 2=2D fix, 3=3D fix, 4=GNSS+DR, 5=Time only
   sats: number;
   speed_mps: number;
   hdop: number;

@@ -35,47 +35,49 @@ All pin assignments below match `sensor_fusion_transmit.ioc` (CubeMX config). Ve
 |------------|---------------|-----------------|------------|----------|
 | VCC | 3.3V | CN8 / 7 | 3.3V | Power |
 | GND | GND | CN8 / 11 | GND | Ground |
-| SCL | D15 | CN7 / 2 | PB6 | I2C1 SCL |
+| SCL | D15 | CN7 / 2 | PB8 | I2C1 SCL |
 | SDA | D14 | CN7 / 4 | PB9 | I2C1 SDA |
 | SDO | GND | CN8 / 11 | GND | Address 0x76 (GND = 0x76, 3.3V = 0x77) |
 | CS | 3.3V | CN8 / 7 | 3.3V | HIGH = I2C mode |
 
-> **Important:** CS must be HIGH to select I²C mode. SDO connected to GND selects address 0x76. Add 4.7kΩ pull-ups on SCL/SDA if your breakout doesn't have them.
+> **Important:** CS must be HIGH to select I²C mode. SDO connected to GND selects address 0x76. Bus is shared with LCD (PCF8574).
 
-### NEO-M8N GPS Module (UART4)
+### LCD 16×2 via PCF8574 Backpack (I2C1 — Shared Bus)
+
+| LCD Pin | Arduino Label | Connector / Pin | STM32 GPIO | Function |
+|---------|---------------|-----------------|------------|----------|
+| VCC | **5V** | CN8 / 9 | 5V | Power (5V required for contrast/backlight) |
+| GND | GND | CN8 / 11 | GND | Ground (Default address 0x27) |
+| SDA | D14 | CN7 / 4 | PB9 | I2C1 SDA |
+| SCL | D15 | CN7 / 2 | PB8 | I2C1 SCL |
+
+> **Note:** The LCD backpack shares the I2C1 bus with the BME688. The firmware automatically detects and initializes the LCD at 0x27 (or 0x3F).
+
+### NEO-M8N GPS Module (USART2)
 
 | GPS Pin | Arduino Label | Connector / Pin | STM32 GPIO | Function |
 |---------|---------------|-----------------|------------|----------|
 | VCC | 3.3V | CN8 / 7 | 3.3V | Power |
 | GND | GND | CN8 / 11 | GND | Ground |
-| RX | D52 | CN9 / 4 | PA1 | UART4_RX (GPS RX ← STM32 TX) |
-| TX | D53 | CN9 / 6 | PA0 | UART4_TX (GPS TX → STM32 RX) |
+| RX | — | CN10 / 15 | PD5 | USART2_TX (Nucleo TX → GPS RX) |
+| TX | — | CN10 / 17 | PD6 | USART2_RX (GPS TX → Nucleo RX) |
 
-> **Cross TX/RX:** GPS TX (D53, PA0) → STM32 PA1. STM32 PA0 → GPS RX (D52).
-> Baud rate: 9600 (configured in .ioc).
+> **Cross TX/RX:** GPS TX → Nucleo PD6 (USART2_RX). Nucleo PD5 (USART2_TX) → GPS RX.  
+> Baud rate: 9600 bps.
 
 ### LD2412 mmWave Radar (UART5)
 
 | Radar Pin | Arduino Label | Connector / Pin | STM32 GPIO | Function |
 |-----------|---------------|-----------------|------------|----------|
-| VCC | 5V | CN8 / 9 | 5V | Power |
+| VCC | **5V** | CN8 / 9 | 5V | Power (5V required) |
 | GND | GND | CN8 / 11 | GND | Ground |
-| TX | — | — | PD2 | UART5_RX (Radar TX → STM32 RX) |
-| RX | — | — | PC12 | UART5_TX (STM32 TX → Radar RX) |
+| TX | — | CN9 / 5 | PD2 | UART5_RX (Radar TX → Nucleo RX) |
+| RX | — | CN9 / 3 | PC12 | UART5_TX (Nucleo TX → Radar RX) |
 
-> **Cross TX/RX:** Radar TX → STM32 PD2. STM32 PC12 → Radar RX.
+> **Cross TX/RX:** Radar TX → Nucleo PD2. Nucleo PC12 → Radar RX.  
 > Baud rate: 115200. Radar needs 5V power, not 3.3V.
 
-### LCD 16×2 via PCF8574 (I2C2)
-
-| LCD Pin | Arduino/Zio Label | Connector / Pin | STM32 GPIO | Function |
-|---------|-------------------|-----------------|------------|----------|
-| VCC | 5V* | CN8 / 9 | 5V | Power |
-| GND | GND | CN8 / 11 | GND | Ground |
-| SDA | D68 | CN9 / 21 | PF0 | I2C2 SDA |
-| SCL | D69 | CN9 / 19 | PF1 | I2C2 SCL |
-
-### ESP32 Ground Receiver (USART6)
+### ESP32 Ground Receiver (USART6 — Optional Simplex Telemetry)
 
 | ESP32 Pin | Nucleo Pin | Function |
 |-----------|------------|----------|
@@ -83,9 +85,8 @@ All pin assignments below match `sensor_fusion_transmit.ioc` (CubeMX config). Ve
 | UART RX | PG14 (USART6_TX) | Nucleo TX → ESP32 RX |
 | GND | GND | Common ground |
 
-> **Cross TX/RX:** ESP32 TX → Nucleo PG9. Nucleo PG14 → ESP32 RX.
+> **Cross TX/RX:** ESP32 TX → Nucleo PG9. Nucleo PG14 → ESP32 RX.  
 > Baud rate: 115200.
-> ⚠️ **USART6 is NOT yet configured in the .ioc file.** You must enable USART6 on PG9/PG14 in STM32CubeMX before this will work.
 
 ---
 
@@ -94,13 +95,14 @@ All pin assignments below match `sensor_fusion_transmit.ioc` (CubeMX config). Ve
 | Module | Interface | STM32 Pins | Connector |
 |--------|-----------|------------|-----------|
 | SX1262 LoRa | SPI1 | PA5 (SCK), PA6 (MISO), PA7 (MOSI), PA4 (CS), PE11 (RESET), PF13 (BUSY), PE9 (DIO1), PE13 (RXEN), PF14 (TXEN) | CN7, CN10 |
-| BME688 | I2C1 | PB6 (SCL), PB9 (SDA) | CN7 |
-| LCD (PCF8574) | I2C2 | PF0 (SDA), PF1 (SCL) | CN9 |
-| NEO-M8N GPS | UART4 | PA0 (TX), PA1 (RX) | CN9 |
-| LD2412 Radar | UART5 | PC12 (TX), PD2 (RX) | CN7/CN8 |
+| BME688 | I2C1 | PB8 (SCL), PB9 (SDA) | CN7 |
+| LCD 1602 (PCF8574) | I2C1 | PB8 (SCL), PB9 (SDA) — Shared with BME688 | CN7 |
+| NEO-M8N GPS | USART2 | PD6 (RX), PD5 (TX) | CN10 |
+| LD2412 Radar | UART5 | PD2 (RX), PC12 (TX) | CN9 |
+| ST-LINK VCP Debug | USART3 | PD8 (TX), PD9 (RX) @ 115200 | Internal / COM10 |
 | ESP32 Receiver | USART6 | PG9 (RX), PG14 (TX) | CN10 |
 
-> Two independent I²C buses: I2C1 (BME688) and I2C2 (LCD). ESP32 communicates over USART6, not I²C.
+> See [`Docs/HARDWARE_WIRING_PIN_LOCK.md`](HARDWARE_WIRING_PIN_LOCK.md) for the canonical verified pin lock table and electrical details.
 
 ---
 
@@ -112,7 +114,7 @@ All pin assignments below match `sensor_fusion_transmit.ioc` (CubeMX config). Ve
 | BME688 | 3.3V | CN8 / 7 |
 | NEO-M8N GPS | 3.3V | CN8 / 7 |
 | LD2412 Radar | **5V** | CN8 / 9 |
-| LCD (PCF8574) | 5V | CN8 / 9 |
+| LCD (PCF8574) | **5V** | CN8 / 9 |
 | ESP32 | USB-powered | — |
 
 **All GND pins connect to CN8 / 11 (common ground).**

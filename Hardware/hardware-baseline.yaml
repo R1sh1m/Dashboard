@@ -1,0 +1,331 @@
+# Artemis Ground Station — Hardware Baseline Manifest
+# Target: NUCLEO-F722ZE (STM32F722ZET6, Cortex-M7 @ 216 MHz)
+# Board: NUCLEO-F722ZE (MB1137 reference schematic)
+# Source: sensor_fusion_transmit.ioc (CubeMX 6.17.0, DB 6.0.170)
+# All peripherals flagged verified: false pending @hardware-architect audit
+
+project: sensor_fusion_transmit
+mcu: STM32F722ZET6
+package: LQFP144
+core: Cortex-M7
+frequency_mhz: 216
+flash_kb: 512
+board: NUCLEO-F722ZE
+board_revision: MB1137
+
+clocks:
+  hse_value_hz: 8000000
+  hsi_value_hz: 16000000
+  pll_m: 4
+  pll_n: 216
+  pll_p: 2
+  pll_q: 9
+  sysclk_source: PLLCLK
+  sysclk_hz: 216000000
+  ahb_hz: 216000000
+  apb1_hz: 54000000
+  apb2_hz: 108000000
+
+peripherals:
+  - name: SX1262 LoRa Radio
+    interface: SPI1
+    status: unverified
+    pins:
+      - pin: PA4
+        signal: LORA_NSS
+        mode: GPIO_Output
+        pull: none
+        speed: VERY_HIGH
+        state: PIN_SET
+        label: LORA_NSS
+        locked: true
+      - pin: PA5
+        signal: SPI1_SCK
+        mode: Full_Duplex_Master
+        locked: true
+      - pin: PA6
+        signal: SPI1_MISO
+        mode: Full_Duplex_Master
+        locked: true
+      - pin: PA7
+        signal: SPI1_MOSI
+        mode: Full_Duplex_Master
+        locked: true
+      - pin: PE11
+        signal: LORA_NRST
+        mode: GPIO_Output
+        pull: none
+        state: PIN_SET
+        label: LORA_NRST
+        locked: true
+      - pin: PF13
+        signal: LORA_BUSY
+        mode: GPIO_Input
+        pull: none
+        label: LORA_BUSY
+        locked: true
+      - pin: PE9
+        signal: LORA_DIO1
+        mode: GPXTI9 (EXTI)
+        pull: PULLDOWN
+        label: LORA_DIO1
+        locked: true
+      - pin: PE13
+        signal: LORA_RXEN
+        mode: GPIO_Output
+        pull: none
+        label: LORA_RXEN
+        locked: true
+      - pin: PF14
+        signal: LORA_TXEN
+        mode: GPIO_Output
+        pull: none
+        label: LORA_TXEN
+        locked: true
+    spi_config:
+      mode: MASTER
+      direction: 2LINES
+      data_size: 8BIT
+      clk_polarity: LOW
+      clk_phase: 1EDGE
+      nss: SOFT
+      baud_prescaler: 16 (6.75 MBits/s)
+      first_bit: MSB
+      ti_mode: DISABLE
+      crc_calculation: DISABLE
+      nssp_mode: PULSE_DISABLE
+
+  - name: BME688 Environmental Sensor
+    interface: I2C1
+    status: unverified
+    pins:
+      - pin: PB6
+        signal: I2C1_SCL
+        mode: I2C
+        locked: true
+      - pin: PB9
+        signal: I2C1_SDA
+        mode: I2C
+        locked: true
+    i2c_config:
+      timing: 0x20404768
+      addressing_mode: 7BIT
+      analog_filter: ENABLE
+      digital_filter: 0
+      no_stretch: DISABLE
+
+  - name: LCD 16x2 via PCF8574
+    interface: I2C2
+    status: unverified
+    i2c_address: 0x27
+    pins:
+      - pin: PF0
+        signal: I2C2_SDA
+        mode: I2C
+        locked: true
+      - pin: PF1
+        signal: I2C2_SCL
+        mode: I2C
+        locked: true
+    power:
+      vcc: 5V (CN8/9)
+      gnd: GND (CN8/11)
+    i2c_config:
+      timing: 0x20404768
+      addressing_mode: 7BIT
+      analog_filter: ENABLE
+      digital_filter: 0
+      no_stretch: DISABLE
+
+  - name: NEO-M8N GPS
+    interface: UART4
+    status: unverified
+    baud: 9600
+    pins:
+      - pin: PA0
+        signal: UART4_TX
+        mode: Asynchronous
+        label: PA0-WKUP
+      - pin: PA1
+        signal: UART4_RX
+        mode: Asynchronous
+
+  - name: LD2412 mmWave Radar
+    interface: UART5
+    status: unverified
+    baud: 115200
+    power: 5V (CN8/9)
+    pins:
+      - pin: PC12
+        signal: UART5_TX
+        mode: Asynchronous
+      - pin: PD2
+        signal: UART5_RX
+        mode: Asynchronous
+
+  - name: ESP32 Ground Receiver (USART6 bridge)
+    interface: USART6
+    status: unverified
+    baud: 115200
+    pins:
+      - pin: PG9
+        signal: USART6_RX
+        mode: Asynchronous
+        pull: PULLUP
+        label: USART6_RX
+        locked: true
+      - pin: PG14
+        signal: USART6_TX
+        mode: Asynchronous
+        pull: PULLUP
+        label: USART6_TX
+        locked: true
+    wiring_note: ESP32 TX -> PG9, ESP32 RX -> PG14, GND -> GND
+
+  - name: STLINK Virtual COM Port (Debug)
+    interface: USART3
+    status: unverified
+    baud: 115200
+    port: COM10
+    pins:
+      - pin: PD8
+        signal: USART3_TX
+        mode: Asynchronous
+        label: STLK_RX [STM32F103CBT6_PA3]
+        locked: true
+      - pin: PD9
+        signal: USART3_RX
+        mode: Asynchronous
+        label: STLK_TX [STM32F103CBT6_PA2]
+        locked: true
+
+  - name: USB OTG FS
+    interface: USB_OTG_FS
+    status: unverified
+    mode: Device_Only
+    pins:
+      - pin: PA8
+        signal: USB_OTG_FS_SOF
+        label: USB_SOF [TP1]
+        locked: true
+      - pin: PA9
+        signal: USB_OTG_FS_VBUS
+        label: USB_VBUS
+        locked: true
+      - pin: PA10
+        signal: USB_OTG_FS_ID
+        label: USB_ID
+        locked: true
+      - pin: PA11
+        signal: USB_OTG_FS_DM
+        label: USB_DM
+        locked: true
+      - pin: PA12
+        signal: USB_OTG_FS_DP
+        label: USB_DP
+        locked: true
+      - pin: PG6
+        signal: GPIO_Output
+        label: USB_PowerSwitchOn [STMPS2151STR_EN]
+        locked: true
+      - pin: PG7
+        signal: GPIO_Input
+        label: USB_OverCurrent [STMPS2151STR_FAULT]
+        locked: true
+
+  - name: User Button
+    interface: GPIO_EXTI
+    status: unverified
+    pins:
+      - pin: PC13
+        signal: GPXTI13
+        mode: IT_RISING
+        label: USER_Btn [B1]
+        locked: true
+
+  - name: LEDs
+    interface: GPIO_Output
+    status: unverified
+    pins:
+      - pin: PB0
+        signal: GPIO_Output
+        label: LD1 [Green]
+        locked: true
+      - pin: PB7
+        signal: GPIO_Output
+        label: LD2 [Blue]
+        locked: true
+      - pin: PB14
+        signal: GPIO_Output
+        label: LD3 [Red]
+        locked: true
+
+  - name: SWO Trace
+    interface: GPIO
+    status: unverified
+    pins:
+      - pin: PB3
+        signal: SYS_JTDO-SWO
+        label: SWO
+        locked: true
+
+  - name: HSE Oscillator
+    interface: RCC
+    status: unverified
+    pins:
+      - pin: PH0
+        signal: RCC_OSC_IN
+        label: MCO
+        locked: true
+      - pin: PH1
+        signal: RCC_OSC_OUT
+        locked: true
+
+  - name: LSE Oscillator
+    interface: RCC
+    status: unverified
+    pins:
+      - pin: PC14
+        signal: RCC_OSC32_IN
+        locked: true
+      - pin: PC15
+        signal: RCC_OSC32_OUT
+        locked: true
+
+  - name: SPI2 (unused)
+    interface: SPI2
+    status: unverified
+    pins:
+      - pin: PB10
+        signal: SPI2_SCK
+        mode: Full_Duplex_Master
+      - pin: PC1
+        signal: SPI2_MOSI
+        mode: Full_Duplex_Master
+      - pin: PC2
+        signal: SPI2_MISO
+        mode: Full_Duplex_Master
+
+nvic:
+  priority_group: NVIC_PRIORITYGROUP_4
+  enabled_irqs:
+    - HardFault_IRQn
+    - MemoryManagement_IRQn
+    - BusFault_IRQn
+    - UsageFault_IRQn
+    - EXTI9_5_IRQn (LORA_DIO1)
+    - UART4_IRQn (GPS)
+    - UART5_IRQn (Radar)
+    - SysTick_IRQn
+    - SVCall_IRQn
+    - PendSV_IRQn
+    - DebugMonitor_IRQn
+
+notes:
+  - PA4 (LORA_NSS) is configured as GPIO_Output, not hardware SPI NSS. Firmware toggles NSS manually via gpio_set_level.
+  - SPI1 baud rate in .ioc is 6.75 MBits/s but firmware lora_radio.c uses 2 MHz on ESP32 side. STM32 side SPI1 prescaler=16.
+  - USART6 is configured in .ioc but was not in original CubeMX generation. Hand-edited .ioc entries exist.
+  - I2C2 (LCD) is configured in .ioc. MX_I2C2_Init added to main.c.
+  - app.c/app.h are referenced by main.c but do not exist in the project source tree.
+  - __io_putchar was weak/undefined; now defined to write to USART3 (COM10).
+  - ESP32 GPIO 5 SPI conflict fixed by setting spics_io_num = -1 in lora_radio.c.

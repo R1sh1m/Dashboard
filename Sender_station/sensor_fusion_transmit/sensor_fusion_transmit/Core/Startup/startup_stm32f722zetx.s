@@ -183,7 +183,7 @@ g_pfnVectors:
   .word     SPI1_IRQHandler                   /* SPI1                         */                   
   .word     SPI2_IRQHandler                   /* SPI2                         */                   
   .word     USART1_IRQHandler                 /* USART1                       */                   
-  .word     USART2_IRQHandler                 /* USART2                       */                   
+  .word     USART2_IRQHandler                 /* UART4                       */                   
   .word     USART3_IRQHandler                 /* USART3                       */                   
   .word     EXTI15_10_IRQHandler              /* External Line[15:10]s        */                          
   .word     RTC_Alarm_IRQHandler              /* RTC Alarm (A and B) through EXTI Line */                 
@@ -197,7 +197,7 @@ g_pfnVectors:
   .word     SDMMC1_IRQHandler                 /* SDMMC1                       */                   
   .word     TIM5_IRQHandler                   /* TIM5                         */                   
   .word     SPI3_IRQHandler                   /* SPI3                         */                   
-  .word     UART4_IRQHandler                  /* UART4                        */                   
+  .word     USART2_IRQHandler                  /* UART4                        */                   
   .word     UART5_IRQHandler                  /* UART5                        */                   
   .word     TIM6_DAC_IRQHandler               /* TIM6 and DAC1&2 underrun errors */                   
   .word     TIM7_IRQHandler                   /* TIM7                         */
@@ -440,8 +440,8 @@ g_pfnVectors:
    .weak      SPI3_IRQHandler            
    .thumb_set SPI3_IRQHandler,Default_Handler
                      
-   .weak      UART4_IRQHandler         
-   .thumb_set UART4_IRQHandler,Default_Handler
+   .weak      USART2_IRQHandler         
+   .thumb_set USART2_IRQHandler,Default_Handler
                   
    .weak      UART5_IRQHandler         
    .thumb_set UART5_IRQHandler,Default_Handler

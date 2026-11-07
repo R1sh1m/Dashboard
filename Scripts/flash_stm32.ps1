@@ -8,7 +8,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$elfFile = "C:\Users\Rishi Misra\Desktop\Study Folder\Team Artemis (2026-27)\Dashboard\Sender_station\sensor_fusion_transmit\sensor_fusion_transmit\Build\sensor_fusion_transmit.elf"
+$rootDir = Split-Path -Parent $PSScriptRoot
+$elfFile = Join-Path $rootDir "Sender_station\sensor_fusion_transmit\sensor_fusion_transmit\bin\sensor_fusion_transmit.elf"
 
 Write-Host "=== STM32 Flash Script ===" -ForegroundColor Cyan
 

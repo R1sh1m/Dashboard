@@ -3,8 +3,9 @@ import type { GpsData } from '../types/telemetry';
 const knotsToMetersPerSecond = (knots: number) => knots * 0.514444;
 
 const parseCoordinate = (value: string, hemisphere: string): number | null => {
+  if (!value || !hemisphere) return null;
   const numeric = Number(value);
-  if (!Number.isFinite(numeric) || !hemisphere) return null;
+  if (!Number.isFinite(numeric)) return null;
   const degrees = Math.floor(numeric / 100);
   const minutes = numeric - degrees * 100;
   const coordinate = degrees + minutes / 60;

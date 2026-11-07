@@ -51,6 +51,7 @@ public/assets/
 
 # Agent & context local specs
 .agents/
+.opencode/
 .context/
 context/
 opencode.json
@@ -62,8 +63,29 @@ Docs/*_MAPS.md
 
 # Build artifacts and generated files
 build/
+**/build/
 **/subdir.mk
 Sender_station/**/build.bat
 Sender_station/**/makefile.init
 Sender_station/**/App/
+
+# Binary firmware outputs & flash dumps
+*.bin
+*.hex
+bin/
+**/bin/
+
+# Machine-specific toolchain & editor compilation databases
+.clangd
+**/.clangd
+compile_commands.json
+**/compile_commands.json
+esp_receiver/sdkconfig.old
+**/sdkconfig.old
+
+# Python cache & temporary debug files
+__pycache__/
+*.py[cod]
+gdb_cmds.txt
+*.tmp
 

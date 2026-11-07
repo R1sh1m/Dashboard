@@ -29,7 +29,7 @@
 1. Leave serial terminal open
 2. Wait ~15 seconds (TELEM_MS period)
 3. **Expected:** Periodic telemetry packet lines appear
-4. **If no output:** Check UART4/UART5 sensor drivers, LoRa TX power, antenna connection
+4. **If no output:** Check USART2 (GPS) / UART5 (Radar) sensor drivers, LoRa TX power, antenna connection
 
 ## Step 3: Verify ESP32 LoRa Reception
 

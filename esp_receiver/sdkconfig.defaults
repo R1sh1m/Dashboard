@@ -1,8 +1,8 @@
 # ESP32 LoRa Receiver - sdkconfig.defaults
 # Team Artemis Ground Station Dashboard
 
-# Target: ESP32-S3 (per Docs/ESP32_Receiver.md)
-CONFIG_IDF_TARGET_ESP32S3=y
+# Target: ESP32 (original ESP32, D0WD-V3)
+CONFIG_IDF_TARGET_ESP32=y
 
 # Console output via UART (COMx)
 CONFIG_ESP_CONSOLE_UART=y
@@ -10,15 +10,15 @@ CONFIG_ESP_CONSOLE_UART_NONE=n
 CONFIG_ESP_CONSOLE_UART_NUM=0
 CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 
-# USB CDC (for JSON output to dashboard)
-CONFIG_USB_CDC_ENABLED=y
+# USB CDC via UART0 (for JSON output to dashboard via CP210x bridge on COM3)
+# On standard ESP32 (no native USB OTG), USE_NATIVE_USB_CDC=0, so output goes
+# over UART0 (GPIO1 TX / GPIO3 RX, 115200 baud) to the external USB-UART bridge.
+CONFIG_USB_CDC_ENABLED=n
 CONFIG_USB_CDC_BAUDRATE=115200
 
-# TinyUSB CDC for native ESP32-S3 USB-CDC (/dev/ttyACM0, VID 0x303A)
-# Enable the native USB-CDC path in ground_bridge.c by setting
-# USE_NATIVE_USB_CDC=1 (see ground_bridge.c). UART0 remains the fallback.
-CONFIG_TINYUSB_ENABLED=y
-CONFIG_TINYUSB_CDC_ENABLED=y
+# TinyUSB not needed on standard ESP32 (no native USB hardware)
+CONFIG_TINYUSB_ENABLED=n
+CONFIG_TINYUSB_CDC_ENABLED=n
 
 # FreeRTOS
 CONFIG_FREERTOS_HZ=1000

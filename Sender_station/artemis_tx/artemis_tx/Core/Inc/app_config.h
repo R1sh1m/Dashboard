@@ -20,7 +20,7 @@
 #define BACKOFF_JITTER_MS  100u
 
 /* ---- duty cycle (token bucket). 10 = 1 %  (ETSI style). 1000 = disabled ---- */
-#define DUTY_PERMILLE      10u
+#define DUTY_PERMILLE      1000u
 #define DUTY_WINDOW_S      3600u
 
 /* ---- fragmentation ---- */

@@ -14,8 +14,8 @@
 #define LORA_TX_DBM      14                   /* 14 / 17 / 20 / 22 */
 
 /* ===== board options - check the Waveshare schematic ===== */
-#define LORA_USE_RXTX_PINS   1   /* TXEN/RXEN driven by MCU. Set 0 if DIO2 switches the antenna */
-#define LORA_USE_DIO2_RFSW   0
+#define LORA_USE_RXTX_PINS   0   /* TXEN/RXEN driven by MCU. Set 0 if DIO2 switches the antenna */
+#define LORA_USE_DIO2_RFSW   1
 #define LORA_USE_TCXO        0   /* 1 = TCXO powered from DIO3 (1.8 V) */
 #define LORA_USE_DCDC        1
 

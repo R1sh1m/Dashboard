@@ -18,16 +18,21 @@
 #include "driver/uart.h"
 
 /* Native USB-CDC (ESP32-S3 USB OTG via TinyUSB) vs UART0 output.
- * Set USE_NATIVE_USB_CDC=1 to emit JSON over the ESP32-S3 native USB-CDC
- * (/dev/ttyACM0, VID 0x303A). Set to 0 to use UART0 (GPIO1 TX / GPIO3 RX)
- * with an external USB-UART bridge (CP210x/CH340/FTDI). */
+ * If target is ESP32-S2/S3/P4 with native USB hardware, USE_NATIVE_USB_CDC defaults to 1.
+ * On standard ESP32 (which lacks native USB OTG), USE_NATIVE_USB_CDC defaults to 0 (UART0). */
+#if defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32P4)
 #ifndef USE_NATIVE_USB_CDC
 #define USE_NATIVE_USB_CDC 1
 #endif
+#else
+#undef USE_NATIVE_USB_CDC
+#define USE_NATIVE_USB_CDC 0
+#endif
 
 #if USE_NATIVE_USB_CDC
-#include "esp_tinyusb.h"
-#include "tusb_cdc_acm.h"
+/* esp_tinyusb component not available in ESP-IDF v6.1 — fall back to UART0 */
+#undef USE_NATIVE_USB_CDC
+#define USE_NATIVE_USB_CDC 0
 #endif
 
 static const char *TAG = "ground_bridge";
@@ -251,6 +256,7 @@ static void emit_json(void)
     double alt_m = shadow.gps.alt_cm / 100.0;
     double speed_mps = shadow.gps.speed_cms / 100.0;
     double hdop = shadow.gps.hdop_x10 / 10.0;
+    double heading_deg = shadow.gps.hdg_cdeg / 100.0;
     
     double temp_c = shadow.env.temp_c100 / 100.0;
     double humidity = shadow.env.hum_c100 / 100.0;
@@ -267,7 +273,7 @@ static void emit_json(void)
         "\"seq\":%u,"
         "\"timestamp\":%u,"
         "\"bot_status\":{\"state\":\"EXPLORING\",\"uptime_sec\":%u,\"mode\":\"AUTONOMOUS\",\"loop_hz\":10.0},"
-        "\"gps\":{\"lat\":%.7f,\"lng\":%.7f,\"alt_m\":%.2f,\"fix\":%u,\"sats\":%u,\"speed_mps\":%.2f,\"hdop\":%.1f,\"valid\":%s},"
+        "\"gps\":{\"lat\":%.7f,\"lng\":%.7f,\"alt_m\":%.2f,\"fix\":%u,\"sats\":%u,\"speed_mps\":%.2f,\"hdop\":%.1f,\"heading_deg\":%.1f,\"valid\":%s},"
         "\"env\":{\"temp_c\":%.1f,\"humidity_pct\":%.1f,\"pressure_hpa\":%.1f,\"gas_resistance_kohm\":%.2f,\"iaq\":%u,\"anomaly_flag\":false},"
         "\"radar\":{\"human_detected\":%s,\"target_state\":\"%s\",\"distance_cm\":%.0f,\"energy\":%u},"
         "\"power\":{\"voltage_v\":%.2f,\"current_a\":%.2f,\"percent\":%u,\"cell_voltages\":[%.2f,%.2f,%.2f]},"
@@ -278,7 +284,7 @@ static void emit_json(void)
         (unsigned int)now,
         (unsigned int)(now / 1000),
         lat, lng, alt_m,
-        shadow.gps.fix, shadow.gps.sats, speed_mps, hdop,
+        shadow.gps.fix, shadow.gps.sats, speed_mps, hdop, heading_deg,
         (shadow.gps.fix >= 2) ? "true" : "false",
         temp_c, humidity, pressure_hpa, gas_kohm,
         (unsigned int)shadow.env.iaq,

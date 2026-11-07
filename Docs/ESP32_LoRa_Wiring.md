@@ -31,6 +31,6 @@ See `esp_receiver/main/lora_radio.c` lines 27-35 for the current GPIO pin defini
 ```powershell
 $env:IDF_PATH="C:\esp\v6.0.2\esp-idf"
 & "C:\esp\v6.0.2\esp-idf\export.ps1"
-cd "C:\Users\Rishi Misra\Desktop\Study Folder\Team Artemis (2026-27)\Dashboard\esp_receiver"
+cd esp_receiver
 idf.py -p COM3 flash monitor
 ```

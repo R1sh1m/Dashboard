@@ -84,7 +84,12 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  /* Blink LD1 (PB0) rapidly on fault — 50ms on/off */
+  volatile uint32_t d;
+  for (int i = 0; i < 5; i++) {
+    GPIOB->BSRR = GPIO_BSRR_BS0; for(d=0;d<50000;d++);
+    GPIOB->BSRR = GPIO_BSRR_BR0; for(d=0;d<50000;d++);
+  }
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -99,7 +104,12 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-
+  /* Blink LD1 (PB0) slowly on MemManage fault — 500ms on/off */
+  volatile uint32_t d;
+  for (int i = 0; i < 3; i++) {
+    GPIOB->BSRR = GPIO_BSRR_BS0; for(d=0;d<500000;d++);
+    GPIOB->BSRR = GPIO_BSRR_BR0; for(d=0;d<500000;d++);
+  }
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
   {
@@ -114,7 +124,12 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
-
+  /* Blink LD1 (PB0) alternating fast/slow on BusFault */
+  volatile uint32_t d;
+  for (int i = 0; i < 3; i++) {
+    GPIOB->BSRR = GPIO_BSRR_BS0; for(d=0;d<100000;d++);
+    GPIOB->BSRR = GPIO_BSRR_BR0; for(d=0;d<100000;d++);
+  }
   /* USER CODE END BusFault_IRQn 0 */
   while (1)
   {
@@ -199,5 +214,33 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /* USER CODE BEGIN 1 */
+
+/**
+  * @brief This function handles USART2 global interrupt (GPS).
+  */
+void USART2_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART2_IRQn 0 */
+
+  /* USER CODE END USART2_IRQn 0 */
+  HAL_UART_IRQHandler(&huart2);
+  /* USER CODE BEGIN USART2_IRQn 1 */
+
+  /* USER CODE END USART2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles UART5 global interrupt (LD2412 radar).
+  */
+void UART5_IRQHandler(void)
+{
+  /* USER CODE BEGIN UART5_IRQn 0 */
+
+  /* USER CODE END UART5_IRQn 0 */
+  HAL_UART_IRQHandler(&huart5);
+  /* USER CODE BEGIN UART5_IRQn 1 */
+
+  /* USER CODE END UART5_IRQn 1 */
+}
 
 /* USER CODE END 1 */
