@@ -13,12 +13,8 @@ from typing import Optional, Dict, Any, List
 import serial
 import serial.tools.list_ports
 
-try:
-    from mcp.server.mcpserver import MCPServer
-    mcp = MCPServer("stm32-hardware-mcp")
-except (ImportError, ModuleNotFoundError):
-    from mcp.server.fastmcp import FastMCP
-    mcp = FastMCP("stm32-hardware-mcp")
+from mcp.server.fastmcp import FastMCP  # type: ignore
+mcp = FastMCP("stm32-hardware-mcp")
 
 # Active connection state
 active_conn: Optional[serial.Serial] = None

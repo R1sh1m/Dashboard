@@ -14,17 +14,13 @@ from typing import Optional, Dict, Any, List
 
 import pymupdf
 try:
-    import pymupdf4llm
+    import pymupdf4llm  # type: ignore
     HAS_PYMUPDF4LLM = True
 except ImportError:
     HAS_PYMUPDF4LLM = False
 
-try:
-    from mcp.server.mcpserver import MCPServer
-    mcp = MCPServer("datasheet-mcp")
-except (ImportError, ModuleNotFoundError):
-    from mcp.server.fastmcp import FastMCP
-    mcp = FastMCP("datasheet-mcp")
+from mcp.server.fastmcp import FastMCP  # type: ignore
+mcp = FastMCP("datasheet-mcp")
 
 # Known datasheet directories
 REPO_ROOT = Path(__file__).resolve().parents[2]
