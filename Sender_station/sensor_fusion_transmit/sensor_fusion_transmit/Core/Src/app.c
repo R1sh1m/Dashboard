@@ -393,14 +393,20 @@ void app_init(void)
 
     /* All inits below return quickly with an ok/fail flag.  None blocks
      * indefinitely: lcd_init is time-bounded, bme/radio/gps use bounded HAL
-     * timeouts, and app_loop retries LCD hot-plug every 1500 ms. */
+     * timeouts, and app_loop retries LCD hot-plug every 1500 ms.  Kick the
+     * watchdog between the slow I2C bus scans so a missing BME688 (which
+     * makes bme_port_init() scan all 6 bus/address combos with 100 ms
+     * HAL timeouts) cannot trip the ~500 ms IWDG before BSEC initializes. */
     g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Sender booting");
+    IWDG->KR = 0x0000AAAAu;
     g_bme_ok = (bme_port_init() == 0);   printf("BME688 %s\r\n", g_bme_ok ? "ok" : "FAIL");
+    IWDG->KR = 0x0000AAAAu;
     if (g_bme_ok) {
         bsec_library_return_t bsec_ret = bsec_wrapper_init();
         printf("BSEC init %s\r\n", bsec_ret == BSEC_OK ? "ok" : "FAIL");
     }
     int r = radio_init();                printf("SX1262 %s\r\n", r == 0 ? "ok" : "FAIL");
+    IWDG->KR = 0x0000AAAAu;
     if (r == 0) radio_start_rx();
     HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
