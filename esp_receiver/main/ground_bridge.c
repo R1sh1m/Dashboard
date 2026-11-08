@@ -181,6 +181,8 @@ static void shadow_init(void)
     memset(&shadow, 0, sizeof(shadow));
     shadow.last_rssi = -128;
     shadow.last_snr = 0;
+    env_valid = 0;
+    walking_latched = 0;
 }
 
 /**
@@ -223,6 +225,7 @@ static void shadow_update(uint8_t type, const uint8_t *pl, uint8_t len, int8_t r
             if (len >= sizeof(pl_env_t)) {
                 memcpy(&shadow.env, pl, sizeof(pl_env_t));
                 shadow.env_t = now;
+                env_valid = 1;
             }
             break;
         case PKT_TELEMETRY:
@@ -234,6 +237,10 @@ static void shadow_update(uint8_t type, const uint8_t *pl, uint8_t len, int8_t r
                 shadow.env.hum_c100 = shadow.telem.hum_c100;
                 shadow.env.press_dhpa = shadow.telem.press_dhpa;
                 shadow.env_t = now;
+                if (shadow.telem.temp_c100 != 0 || shadow.telem.hum_c100 != 0 ||
+                    shadow.telem.press_dhpa != 0) {
+                    env_valid = 1;
+                }
             }
             break;
     }
@@ -244,6 +251,11 @@ static void shadow_update(uint8_t type, const uint8_t *pl, uint8_t len, int8_t r
  * ============================================================================
  */
 #define USB_TX_BUF_SIZE 1024
+#define WALKING_ENTER_SPEED_MPS 0.35
+#define WALKING_EXIT_SPEED_MPS 0.15
+
+static uint8_t env_valid;
+static uint8_t walking_latched;
 
 /**
  * @brief Emit shadow state as JSON over USB-CDC
@@ -282,11 +294,19 @@ static void emit_json(void)
     
     /* Anomaly flag: gas_valid bit (b0) clear in env.flags indicates anomalous
      * environmental reading. Only evaluated if actual env telemetry has been received. */
-    uint8_t anomaly_flag = (shadow.env_t != 0 && !(shadow.env.flags & 0x01)) ? 1u : 0u;
+    uint8_t anomaly_flag = (env_valid && !(shadow.env.flags & 0x01)) ? 1u : 0u;
+
+    /* Use hysteresis so GPS jitter around walking pace cannot flap the UI
+     * between WALKING and STANDBY for small movements. */
+    if (walking_latched) {
+        if (speed_mps < WALKING_EXIT_SPEED_MPS) walking_latched = 0;
+    } else if (speed_mps >= WALKING_ENTER_SPEED_MPS) {
+        walking_latched = 1;
+    }
 
     /* Derive dynamic bot operating state from telemetry signals */
     const char *bot_state = "STANDBY";
-    if (speed_mps > 0.2) {
+    if (walking_latched) {
         bot_state = "WALKING";
     } else if (shadow.radar.human || shadow.radar.target_state != 0) {
         bot_state = "EXPLORING";
@@ -322,7 +342,7 @@ static void emit_json(void)
         "\"timestamp\":%u,"
         "\"bot_status\":{\"state\":\"%s\",\"uptime_sec\":%u,\"mode\":\"%s\",\"loop_hz\":%.1f},"
         "\"gps\":{\"lat\":%.7f,\"lng\":%.7f,\"alt_m\":%.2f,\"fix\":%u,\"sats\":%u,\"speed_mps\":%.2f,\"hdop\":%.1f,\"heading_deg\":%.1f,\"valid\":%s},"
-        "\"env\":{\"temp_c\":%.1f,\"humidity_pct\":%.1f,\"pressure_hpa\":%.1f,\"gas_resistance_kohm\":%.2f,\"iaq\":%u,\"anomaly_flag\":%s},"
+        "\"env\":{\"temp_c\":%.1f,\"humidity_pct\":%.1f,\"pressure_hpa\":%.1f,\"gas_resistance_kohm\":%.2f,\"iaq\":%u,\"anomaly_flag\":%s,\"valid\":%s},"
         "\"radar\":{\"human_detected\":%s,\"target_state\":\"%s\",\"distance_cm\":%.0f,\"energy\":%u},"
         "\"power\":{\"voltage_v\":%.2f,\"current_a\":%.2f,\"percent\":%u,\"cell_voltages\":[%.2f,%.2f,%.2f]},"
         "\"motors\":{\"active_count\":%u,\"avg_temp_c\":%.1f,\"max_temp_c\":%.1f,\"fault_mask\":0,\"servos\":[]},"
@@ -340,6 +360,7 @@ static void emit_json(void)
         temp_c, humidity, pressure_hpa, gas_kohm,
         (unsigned int)iaq_val,
         (anomaly_flag ? "true" : "false"),
+        (env_valid ? "true" : "false"),
         shadow.radar.human ? "true" : "false",
         shadow.radar.target_state == 0 ? "NO_TARGET" : (shadow.radar.target_state == 1 ? "MOVING" : (shadow.radar.target_state == 2 ? "STATIONARY" : "COMBINED")),
         radar_dist_cm, shadow.radar.mov_energy,
@@ -464,8 +485,6 @@ void ground_bridge_process_frame(const uint8_t *buf, uint8_t len, int8_t rssi, i
      * the connectivity indicators (signal bars, seq, last-contact) live. */
     emit_json();
 }
-
-
 
 
 

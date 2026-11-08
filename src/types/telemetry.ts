@@ -27,6 +27,7 @@ export interface EnvData {
   gas_resistance_kohm: number;
   iaq: number; // 0-50 Good, 51-100 Moderate, 101-150 Unhealthy Sensitive, 151+ Unhealthy
   anomaly_flag: boolean;
+  valid?: boolean;
 }
 
 export interface RadarData {

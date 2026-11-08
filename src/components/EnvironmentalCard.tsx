@@ -7,7 +7,9 @@ interface EnvironmentalCardProps {
 }
 
 export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => {
-  const hasReading = env !== null && !(env.temp_c === 0 && env.pressure_hpa === 0 && env.humidity_pct === 0);
+  const hasReading = env !== null && (env.valid ?? (
+    env.temp_c !== 0 || env.pressure_hpa !== 0 || env.humidity_pct !== 0
+  ));
   const temp = hasReading ? env.temp_c : null;
   const humidity = hasReading ? env.humidity_pct : null;
   const pressure = hasReading ? env.pressure_hpa : null;

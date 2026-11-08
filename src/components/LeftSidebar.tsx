@@ -145,7 +145,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="sidebar-footer">
         <div className="flex flex-col items-end gap-2">
           <button
-            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative gap-2 backdrop-blur-md transition-all hover:brightness-110 active:scale-95`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative gap-2 backdrop-blur-md transition-all hover:brightness-110 active:scale-95 h-10 min-w-[112px]`}
             onClick={() => { setActiveNav('estop'); onTriggerEStop(); }}
             aria-label="Emergency stop"
             style={{
@@ -158,7 +158,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <span>E-STOP</span>
           </button>
           <span
-            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative backdrop-blur-md`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative backdrop-blur-md h-10 min-w-[112px]`}
             style={{
               backgroundColor: robotStyle.bg,
               border: robotStyle.border,
@@ -170,7 +170,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </span>
           <button
             type="button"
-            className="pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative cursor-pointer backdrop-blur-md transition-all hover:brightness-125 active:scale-95 shadow-sm"
+            className="pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative cursor-pointer backdrop-blur-md transition-all hover:brightness-125 active:scale-95 shadow-sm h-10 min-w-[112px]"
             onClick={serialStatus === 'CONNECTED' ? onDisconnectSerial : onConnectSerial}
             aria-label={serialStatus === 'CONNECTED' ? 'Disconnect serial link' : 'Connect serial link'}
             title={
