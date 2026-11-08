@@ -91,3 +91,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.tmp
+
+# Personal / Developer Scratch Files
+gdb_cmd*.txt
+*.diff
+sx126*.diff
+*DESIGN.md
+design*.md
