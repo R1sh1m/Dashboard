@@ -98,7 +98,7 @@ export function App() {
     setTelemetry(packet);
     setGpsData(packet.gps);
     setLastPacketTime(Date.now());
-    if (packet.gps.valid && packet.gps.lat !== 0 && packet.gps.lng !== 0) {
+    if (packet.gps.lat !== 0 && packet.gps.lng !== 0) {
       setLastKnownPosition({ lat: packet.gps.lat, lng: packet.gps.lng });
     }
     // Update movement state based on GPS position change.
@@ -164,7 +164,7 @@ export function App() {
   const handleIncomingGps = useCallback((gps: GpsData) => {
     setGpsData(gps);
     setTelemetry((current) => current ? { ...current, gps } : current);
-    if (gps.valid && gps.lat !== 0 && gps.lng !== 0) {
+    if (gps.lat !== 0 && gps.lng !== 0) {
       setLastKnownPosition({ lat: gps.lat, lng: gps.lng });
       setHomePosition((current) => current ?? { lat: gps.lat, lng: gps.lng });
     }
@@ -327,8 +327,10 @@ export function App() {
           >
             <AlertTriangle className="lkl-icon" size={18} strokeWidth={2.5} aria-hidden="true" />
             <span className="lkl-label">
-              Last known location
-              {lastPacketTime ? ` · ${Math.round((now - lastPacketTime) / 1000)}s since contact` : ' · No signal'}
+              {lastKnownPosition
+                ? `Last known: ${lastKnownPosition.lat.toFixed(5)}°N, ${lastKnownPosition.lng.toFixed(5)}°E`
+                : 'Last known location'}
+              {lastPacketTime ? ` (${Math.round((now - lastPacketTime) / 1000)}s ago)` : ' · No signal'}
             </span>
           </button>
         )}

@@ -31,4 +31,8 @@ int    ubx_cfg_prt_wait_ack(UART_HandleTypeDef *huart, uint32_t timeout_ms);
  * Returns 1 on ACK, 0 on timeout. */
 int    ubx_cfg_wait_ack(UART_HandleTypeDef *huart, uint32_t timeout_ms,
                         uint8_t cls, uint8_t id);
+
+/* Non-blocking ring-buffer ACK tracking */
+void   ubx_ack_clear(void);
+int    ubx_ack_seen(uint8_t cls, uint8_t id);
 #endif

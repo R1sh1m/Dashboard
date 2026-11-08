@@ -45,7 +45,7 @@ const LINK_PILL: Record<SerialStatus, { bg: string; border: string; text: string
   DISCONNECTED: { bg: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.22)', text: '#f4f4f5', dot: 'bg-zinc-400' },
   CONNECTING: { bg: 'rgba(255, 214, 10, 0.22)', border: '1px solid rgba(255, 214, 10, 0.65)', text: '#ffd60a', dot: 'bg-yellow-400', animate: 'animate-pulse' },
   CONNECTED: { bg: 'rgba(48, 209, 88, 0.22)', border: '1px solid rgba(48, 209, 88, 0.65)', text: '#30d158', dot: 'bg-emerald-400', animate: 'animate-pulse' },
-  ERROR: { bg: 'rgba(255, 69, 58, 0.38)', border: '1.5px solid rgba(255, 69, 58, 0.90)', text: '#ffffff', dot: 'bg-white', animate: 'animate-pulse' },
+  ERROR: { bg: 'rgba(255, 69, 58, 0.95)', border: '1.5px solid #ff453a', text: '#ffffff', dot: 'bg-white', animate: 'animate-pulse' },
 };
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({

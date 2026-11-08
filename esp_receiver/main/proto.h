@@ -26,6 +26,7 @@ enum { CMD_ESTOP = 0x01, CMD_SYNC_TIME = 0x02 };
 #define PROTO_CRC_LEN      2u
 #define PROTO_MAX_FRAME    255u
 #define PROTO_MAX_PAYLOAD  (PROTO_MAX_FRAME - PROTO_HDR_LEN - PROTO_CRC_LEN)
+#define FRAG_CHUNK         28u
 
 #define PK __attribute__((packed))
 

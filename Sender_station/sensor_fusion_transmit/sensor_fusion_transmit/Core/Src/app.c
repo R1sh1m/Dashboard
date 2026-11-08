@@ -294,49 +294,42 @@ static void ubx_tx(uint8_t cls, uint8_t id, const uint8_t *pl, uint16_t len)
     uint8_t b[64]; size_t n = ubx_build(b, cls, id, pl, len);
     HAL_UART_Transmit(&huart2, b, (uint16_t)n, 100); HAL_Delay(25);
 }
+
+/* Wait up to 600 ms for a UBX-ACK-ACK matching (cls,id) after a config command.
+   Drains the GPS ring buffer non-blockingly and feeds bytes through UBX parser. */
+static int ubx_wait_ack(uint8_t cls, uint8_t id)
+{
+    uint32_t t0 = HAL_GetTick();
+    ubx_ack_clear();
+    while ((int32_t)(HAL_GetTick() - t0) < 600) {
+        uint8_t c;
+        while (rb_get(&gps_rb, &c)) {
+            ubx_feed(&ubx, c, &g_gps, HAL_GetTick());
+        }
+        if (ubx_ack_seen(cls, id)) return 1;
+        HAL_Delay(5);
+    }
+    return 0;
+}
+
 static void gps_configure(void)
 {
-    /* 1. Switch NEO-M8N UART to 115200 baud via UBX-CFG-PRT (28 bytes, per Docs/Datasheets/NEO-M8_Datasheet_Summary.md section 5.2)
-     *    Payload: portID=1(UART1), mode=8N1 (0x000008D0), baudRate=0x0001C200=115200, inProto=UBX+NMEA, outProto=UBX+NMEA
-     *    Checksum: CK_A=0x43, CK_B=0x9C (recalculated for 20-byte payload) */
-    const uint8_t cfg_prt[28] = { 0xB5,0x62,0x06,0x00,0x14,0x00, 0x01,0x00,0x00,0x00, 0xD0,0x08,0x00,0x00,
-                                  0x00,0xC2,0x01,0x00, 0x07,0x00,0x03,0x00, 0x00,0x00,0x00,0x00, 0x43,0x9C };
+    /* Keep UART2 at 9600 baud (u-blox factory default) */
+    /* 1. CFG-MSG: Enable NAV-PVT at 1 per navigation cycle on UART1 */
+    const uint8_t pvt[7]  = { 0x01, 0x07, 0, 1, 0, 0, 0 };
+    /* 2. CFG-MSG: Enable NAV-DOP at 1 per navigation cycle on UART1 */
+    const uint8_t dop[7]  = { 0x01, 0x04, 0, 1, 0, 0, 0 };
+    /* 3. CFG-RATE: 1000 ms (1 Hz) measurement rate for fast, sensitive satellite lock */
+    const uint8_t rate[6] = { 0xE8, 0x03, 0x01, 0x00, 0x01, 0x00 };
+    /* 4. CFG-NAV5: dynModel = portable (0) for fast acquisition / low thresholds */
+    uint8_t nav5[36]      = { 0x01, 0x00, 0 };
 
-    /* Send CFG-PRT at initial 9600 baud to configure module, then verify ACK-ACK handshake */
-    ubx_cfg_prt_reset();
-    HAL_UART_Transmit(&huart2, cfg_prt, 28, 100);
-    int acked = ubx_cfg_prt_wait_ack(&huart2, 500);  /* ACK arrives at 9600 baud before module switches */
-    printf("CFG-PRT ACK %s\r\n", acked ? "ok" : "FAIL");
-
-    HAL_Delay(100);  /* let module finish switching to 115200 before we touch BRR */
-
-    /* After CFG-PRT the module switches its UART to 115200. Reconfigure huart2 to match before any further traffic. */
-    HAL_UART_Abort(&huart2);
-    huart2.Init.BaudRate = 115200;
-    HAL_UART_Init(&huart2);
-    HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
-    HAL_Delay(50);
-
-    /* Also transmit at 115200 in case module was already running at 115200 across MCU warm resets */
-    ubx_cfg_prt_reset();
-    HAL_UART_Transmit(&huart2, cfg_prt, 28, 100);
-    acked = ubx_cfg_prt_wait_ack(&huart2, 500);  /* ACK arrives at 115200 baud */
-    printf("CFG-PRT @115200 ACK %s\r\n", acked ? "ok" : "FAIL");
-    HAL_Delay(25);
-
-    /* 2. Enable NAV-PVT and NAV-DOP on UART output via CFG-MSG (7-byte payload:
-     *    [msgClass, msgID, rateDDC, rateUART1, rateUART2, rateUSB, rateSPI]) */
-    const uint8_t pvt[7]  = { 0x01, 0x07, 0, 1, 1, 1, 1 };   /* NAV-PVT @1 on all ports */
-    const uint8_t dop[7]  = { 0x01, 0x04, 0, 1, 1, 1, 1 };   /* NAV-DOP @1 on all ports */
-    const uint8_t rate[6] = { 0x64, 0x00, 0x01, 0x00, 0x01, 0x00 }; /* CFG-RATE: 100 ms measRate, GPS time, 1 nav solution */
-    uint8_t nav5[36] = { 0x01, 0x00, 3 };                     /* CFG-NAV5: dynModel = pedestrian */
-    ubx_tx(0x06, 0x01, pvt, 7); ubx_tx(0x06, 0x01, dop, 7);
-    if (!ubx_cfg_wait_ack(&huart2, 1000, 0x06, 0x01)) printf("CFG-MSG NAV-PVT ACK FAIL\r\n");
-    if (!ubx_cfg_wait_ack(&huart2, 1000, 0x06, 0x01)) printf("CFG-MSG NAV-DOP ACK FAIL\r\n");
-    ubx_tx(0x06, 0x08, rate, 6);
-    if (!ubx_cfg_wait_ack(&huart2, 1000, 0x06, 0x08)) printf("CFG-RATE ACK FAIL\r\n");
-    ubx_tx(0x06, 0x24, nav5, 36);
-    if (!ubx_cfg_wait_ack(&huart2, 1000, 0x06, 0x24)) printf("CFG-NAV5 ACK FAIL\r\n");
+    int ok = 1;
+    ubx_tx(0x06, 0x01, pvt, 7);  ok &= ubx_wait_ack(0x06, 0x01);
+    ubx_tx(0x06, 0x01, dop, 7);  ok &= ubx_wait_ack(0x06, 0x01);
+    ubx_tx(0x06, 0x08, rate, 6); ok &= ubx_wait_ack(0x06, 0x08);
+    ubx_tx(0x06, 0x24, nav5, 36);ok &= ubx_wait_ack(0x06, 0x24);
+    printf("GPS config %s\r\n", ok ? "ACK" : "NAK/TIMEOUT");
 }
 
 /* ------------------------------------------------------------------ LCD */
@@ -368,15 +361,28 @@ static void lcd_update(uint32_t now)
 }
 
 /* ------------------------------------------------------------------ init / loop */
-/* Independent Watchdog: LSI ~32 kHz, prescaler /64 (PR=4), reload 249
- * Timeout = (249+1) * 64 / 32000 ≈ 500 ms.  Kick in app_loop() each pass. */
+/* Independent Watchdog: LSI ~32 kHz, prescaler /256 (PR=6), reload 500
+ * Timeout = (500+1) * 256 / 32000 ≈ 4.0 seconds window.  Kick in app_loop() each pass. */
 static void iwdg_init(void)
 {
+    /* Enable LSI clock */
+    RCC->CSR |= RCC_CSR_LSION;
+    uint32_t t0 = HAL_GetTick();
+    while (!(RCC->CSR & RCC_CSR_LSIRDY)) {
+        if (HAL_GetTick() - t0 > 100) break;
+    }
+
     IWDG->KR = 0x00005555u;          /* enable write access to PR/RLR */
-    while (IWDG->SR & 0x00000002u) {} /* wait PVD bit? no, wait for RLV/PVU flags clear */
-    IWDG->PR = 4u;                   /* /64 prescaler */
-    IWDG->RLR = 249u;                /* ~500 ms window */
-    while (IWDG->SR != 0u) {}        /* wait for registers to update */
+    uint32_t sr_t0 = HAL_GetTick();
+    while (IWDG->SR != 0u) {
+        if (HAL_GetTick() - sr_t0 > 50) break;
+    }
+    IWDG->PR = 6u;                   /* /256 prescaler */
+    IWDG->RLR = 500u;                /* ~4.0s window */
+    sr_t0 = HAL_GetTick();
+    while (IWDG->SR != 0u) {
+        if (HAL_GetTick() - sr_t0 > 50) break;
+    }
     IWDG->KR = 0x0000CCCCu;          /* start the watchdog */
     IWDG->KR = 0x0000AAAAu;          /* first reload (kick) */
 }
@@ -387,32 +393,28 @@ void app_init(void)
     HAL_UART_Transmit(&huart3, (uint8_t *)boot_msg, (uint16_t)strlen(boot_msg), 100);
     printf("Sender TX start\r\n");
 
-    /* Start the independent watchdog for headless auto-recovery from
-     * transient faults / brownouts.  ~500 ms timeout. */
-    iwdg_init();
-
     /* All inits below return quickly with an ok/fail flag.  None blocks
      * indefinitely: lcd_init is time-bounded, bme/radio/gps use bounded HAL
-     * timeouts, and app_loop retries LCD hot-plug every 1500 ms.  Kick the
-     * watchdog between the slow I2C bus scans so a missing BME688 (which
-     * makes bme_port_init() scan all 6 bus/address combos with 100 ms
-     * HAL timeouts) cannot trip the ~500 ms IWDG before BSEC initializes. */
+     * timeouts, and app_loop retries LCD hot-plug every 1500 ms. */
+    printf(">>> About to init LCD\r\n");
     g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Sender booting");
-    IWDG->KR = 0x0000AAAAu;
+    printf(">>> LCD init done (g_lcd_ok=%d)\r\n", g_lcd_ok);
+    printf(">>> About to init BME688\r\n");
     g_bme_ok = (bme_port_init() == 0);   printf("BME688 %s\r\n", g_bme_ok ? "ok" : "FAIL");
-    IWDG->KR = 0x0000AAAAu;
     if (g_bme_ok) {
         bsec_library_return_t bsec_ret = bsec_wrapper_init();
         printf("BSEC init %s\r\n", bsec_ret == BSEC_OK ? "ok" : "FAIL");
     }
     int r = radio_init();                printf("SX1262 %s\r\n", r == 0 ? "ok" : "FAIL");
-    IWDG->KR = 0x0000AAAAu;
     if (r == 0) radio_start_rx();
     HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
     gps_configure();
     bucket_t = HAL_GetTick(); bucket_us = BUCKET_MAX_US;
     rnd_state ^= DWT->CYCCNT | 1u;
+
+    /* Start the independent watchdog once all peripherals are configured */
+    iwdg_init();
     printf("App ready, entering main loop\r\n");
 }
 

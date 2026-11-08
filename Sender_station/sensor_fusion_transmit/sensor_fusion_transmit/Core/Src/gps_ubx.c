@@ -18,9 +18,14 @@ size_t ubx_build(uint8_t *o, uint8_t cls, uint8_t id, const uint8_t *pl, uint16_
 
 /* ---- CFG-PRT handshake state (set by handle() when ACK-ACK for CFG-PRT arrives) ---- */
 static uint8_t g_cfg_prt_acked = 0;
+static uint8_t ack_cls = 0, ack_id = 0;
+static int ack_got = 0;
 
 void ubx_cfg_prt_reset(void) { g_cfg_prt_acked = 0; }
 int  ubx_cfg_prt_acked(void) { return g_cfg_prt_acked; }
+
+void ubx_ack_clear(void) { ack_got = 0; ack_cls = 0; ack_id = 0; }
+int  ubx_ack_seen(uint8_t cls, uint8_t id) { return ack_got && ack_cls == cls && ack_id == id; }
 
 static int handle(ubx_parser_t *p, gps_data_t *g, uint32_t now)
 {
@@ -48,9 +53,9 @@ static int handle(ubx_parser_t *p, gps_data_t *g, uint32_t now)
         uint16_t h = u2(p->buf + 12) / 10;                            /* 0.01 -> 0.1 */
         g->hdop_x10 = (uint8_t)(h > 255 ? 255 : h);
     }
-    /* UBX-ACK-ACK (0x05 0x01): acknowledge of a CFG command.  We record
-     * CFG-PRT acceptance so gps_configure() can verify the handshake. */
+    /* UBX-ACK-ACK (0x05 0x01): acknowledge of a CFG command. */
     if (p->cls == 0x05 && p->id == 0x01 && p->len == 2) {
+        ack_cls = p->buf[0]; ack_id = p->buf[1]; ack_got = 1;
         if (p->buf[0] == 0x06 && p->buf[1] == 0x00)   /* ACK for CFG-PRT */
             g_cfg_prt_acked = 1;
     }

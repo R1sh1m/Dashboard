@@ -119,7 +119,7 @@
  * EU868: typically 1% (10 permille) per channel
  * US915: typically no duty cycle limit, but TX time limits apply
  */
-#define DUTY_PERMILLE         10u         /* 1% duty cycle (EU) */
+#define DUTY_PERMILLE         1000u       /* 1000 = continuous telemetry (disabled token-bucket throttle) */
 #define DUTY_WINDOW_S         3600u       /* 1-hour window */
 
 /* ============================================================================

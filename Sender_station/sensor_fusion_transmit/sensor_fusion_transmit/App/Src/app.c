@@ -7,9 +7,11 @@
 #include "ld2412.h"
 #include "lora_radio.h"
 #include "bme688_port.h"
+#include "bsec_wrapper.h"
 #include "lcd_i2c.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 extern UART_HandleTypeDef huart2;   /* GPS   */
 extern UART_HandleTypeDef huart5;   /* radar */
@@ -37,6 +39,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin == LORA_DIO1_Pin) radio_dio1_
 
 /* ------------------------------------------------------------------ state */
 static ubx_parser_t ubx; static gps_data_t g_gps;
+/* NMEA sentence collection buffer (NEO-M8N defaults to NMEA output) */
+static char nmea_buf[120]; static uint8_t nmea_len; static bool nmea_in_msg;
 static ld_parser_t  ldp; static ld_target_t g_rad;
 static bme_sample_t g_env; static uint8_t g_env_ok, g_bme_ok, g_bme_busy; static uint32_t g_bme_t0;
 static uint16_t g_seq, g_pktid, g_tx_count, g_retries, g_drops;
@@ -63,9 +67,16 @@ static int txq_push(uint8_t type, uint8_t flags, uint8_t prio, uint8_t ack_req,
 {
     if (len > TXQ_PL_MAX) return -1;
     uint32_t now = HAL_GetTick(); int s = -1;
-    if (coalesce)  /* periodic data: newest not-yet-sent sample replaces the old one */
-        for (int i = 0; i < (int)Q_DEPTH; i++)
-            if (q[i].used && q[i].type == type && !q[i].seq_set) { s = i; break; }
+    uint32_t orig_enq = now;
+    if (coalesce) { /* periodic data: newest not-yet-sent sample replaces the old one */
+        for (int i = 0; i < (int)Q_DEPTH; i++) {
+            if (q[i].used && q[i].type == type && !q[i].seq_set) {
+                s = i;
+                orig_enq = q[i].enq_ms;  /* preserve enqueue timestamp so aging & queue order are not reset */
+                break;
+            }
+        }
+    }
     if (s < 0) for (int i = 0; i < (int)Q_DEPTH; i++) if (!q[i].used) { s = i; break; }
     if (s < 0) {   /* full: evict the least important, oldest entry (never the in-flight one) */
         int v = -1;
@@ -78,7 +89,7 @@ static int txq_push(uint8_t type, uint8_t flags, uint8_t prio, uint8_t ack_req,
     }
     txe_t *e = &q[s]; memset(e, 0, sizeof *e);
     e->used = 1; e->type = type; e->flags = flags; e->prio = prio; e->ack_req = ack_req;
-    e->len = len; e->enq_ms = now; if (len) memcpy(e->pl, pl, len);
+    e->len = len; e->enq_ms = orig_enq; if (len) memcpy(e->pl, pl, len);
     return 0;
 }
 
@@ -122,6 +133,7 @@ static void tx_try(uint32_t now)
     uint8_t frame[PROTO_MAX_FRAME];
     size_t n = proto_build(frame, e->type, fl, e->seq, ADDR_GROUND, e->pl, e->len);
     if (!n) { e->used = 0; return; }
+    printf("--> TX_TRY pick=%d type=%d len=%d\r\n", i, (int)e->type, (int)n);
     uint32_t toa = radio_toa_ms((uint8_t)n);
     if (!duty_ok(toa)) return;                                /* wait for budget */
     if (radio_send(frame, (uint8_t)n) != 0) { printf("radio_send fail\r\n"); return; }
@@ -190,17 +202,46 @@ static uint8_t sensor_flags(uint32_t now)
                      ((g_rad.t_ms && now - g_rad.t_ms < 2000) ? 4 : 0) | (g_lcd_ok ? 8 : 0));
 }
 static void power_read_adc(uint32_t now, uint16_t *mv, uint16_t *ma, uint8_t *soc)
-{   /* ESTIMATE ONLY: assumes pack full at boot and constant average load */
-    uint32_t used = (uint32_t)((uint64_t)AVG_LOAD_MA * (now / 1000u) / 3600u);
-    uint32_t s = used >= BATT_CAP_MAH ? 0 : 100u - used * 100u / BATT_CAP_MAH;
-    *soc = (uint8_t)s; *ma = AVG_LOAD_MA;
-    *mv = (uint16_t)(9900u + (12600u - 9900u) * s / 100u);    /* 3S: 3.3..4.2 V per cell */
+{   /* REAL ADC sensing: pack voltage via voltage divider on ADC1_IN0 (PA0),
+     * current via shunt amplifier on ADC1_IN1 (PA1). Direct register access
+     * (no HAL ADC driver in this project). */
+    static int adc_init_done = 0;
+    if (!adc_init_done) {
+        RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;          /* enable ADC1 clock */
+        GPIOA->MODER |= (3u << (0 * 2)) | (3u << (1 * 2));  /* PA0, PA1 analog mode */
+        ADC1->CR1 = 0;
+        ADC1->CR2 = 0;
+        ADC1->SQR1 = 0;                              /* 1 conversion */
+        ADC1->SQR2 = 0;
+        ADC1->SQR3 = 0;                              /* channel 0 first */
+        ADC1->SMPR2 = 0;                             /* 3-cycle sampling */
+        ADC1->CR2 |= ADC_CR2_ADON;                   /* enable ADC */
+        adc_init_done = 1;
+    }
+    /* Channel 0: pack voltage */
+    ADC1->SQR3 = 0;
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+    while (!(ADC1->SR & ADC_SR_EOC));
+    uint32_t adc_v = ADC1->DR;
+    *mv = (uint16_t)((uint64_t)adc_v * 3300u * 11u / 4095u);
+    /* Channel 1: pack current */
+    ADC1->SQR3 = 1u;
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+    while (!(ADC1->SR & ADC_SR_EOC));
+    uint32_t adc_i = ADC1->DR;
+    *ma = (uint16_t)((uint64_t)adc_i * 806u / 500u);
+    /* SoC from voltage (3S: 3.3..4.2 V per cell = 9900..12600 mV) */
+    uint32_t s = 0;
+    if (*mv >= 12600u) s = 100;
+    else if (*mv <= 9900u) s = 0;
+    else s = 100u * (*mv - 9900u) / (12600u - 9900u);
+    *soc = (uint8_t)s;
 }
 static void send_gps(uint32_t now)
 {
     pl_gps_t p = { now, g_gps.lat_e7, g_gps.lon_e7, g_gps.alt_cm, g_gps.speed_cms,
                    g_gps.hdg_cdeg, g_gps.fix, g_gps.sats, g_gps.hdop_x10 };
-    txq_push(PKT_GPS_CRITICAL, FLAG_PRIORITY, 1, 0, &p, sizeof p, 1);
+    txq_push(PKT_GPS_CRITICAL, FLAG_PRIORITY, 2, 0, &p, sizeof p, 1);
 }
 static void send_radar(uint32_t now)
 {
@@ -214,14 +255,17 @@ static void send_status(uint32_t now)
 }
 static void send_power(uint32_t now)
 {
-    pl_power_t p; p.t_ms = now; power_read_adc(now, &p.est_mv, &p.est_ma, &p.est_soc);
+    uint16_t mv, ma; uint8_t soc;
+    power_read_adc(now, &mv, &ma, &soc);
+    pl_power_t p = { .t_ms = now, .est_mv = mv, .est_ma = ma, .est_soc = soc };
     txq_push(PKT_POWER_CRIT, 0, 2, 0, &p, sizeof p, 1);
 }
+
 static void send_env(uint32_t now)
 {
     pl_env_t p = { now, g_env.temp_c100, g_env.hum_c100, g_env.press_dhpa, g_env.gas_ohm,
-                   0xFFFF /* IAQ n/a without BSEC */, (uint8_t)(g_env.gas_valid | (g_env.heat_stab << 1)) };
-    txq_push(PKT_ENV, 0, 3, 0, &p, sizeof p, 1);
+                   g_env.iaq, (uint8_t)(g_env.gas_valid | (g_env.heat_stab << 1)) };
+    txq_push(PKT_ENV, 0, 2, 0, &p, sizeof p, 1);
 }
 static void send_fragmented(uint8_t type, const uint8_t *data, uint16_t len)
 {
@@ -239,7 +283,7 @@ static void send_telemetry(uint32_t now)
     pl_telem_t t = { now, now / 1000u, g_gps.lat_e7, g_gps.lon_e7, g_gps.alt_cm, g_gps.speed_cms,
                      g_gps.hdg_cdeg, g_gps.fix, g_gps.sats, g_env.temp_c100, g_env.hum_c100,
                      g_env.press_dhpa, g_rad.state, 0, sensor_flags(now) };
-    uint16_t mv, ma; power_read_adc(now, &mv, &ma, &t.soc);
+    uint16_t mv, ma; uint8_t soc_dummy; power_read_adc(now, &mv, &ma, &soc_dummy); t.soc = soc_dummy;
     if (sizeof t <= FRAG_CHUNK) txq_push(PKT_TELEMETRY, 0, 3, 0, &t, sizeof t, 1);
     else send_fragmented(PKT_TELEMETRY, (const uint8_t *)&t, sizeof t);
 }
@@ -250,59 +294,175 @@ static void ubx_tx(uint8_t cls, uint8_t id, const uint8_t *pl, uint16_t len)
     uint8_t b[64]; size_t n = ubx_build(b, cls, id, pl, len);
     HAL_UART_Transmit(&huart2, b, (uint16_t)n, 100); HAL_Delay(25);
 }
-static void gps_configure(void)
-{
-    const uint8_t pvt[7] = { 0x01, 0x07, 0, 1, 0, 0, 0 };   /* CFG-MSG: NAV-PVT @1Hz on UART1 */
-    const uint8_t dop[7] = { 0x01, 0x04, 0, 1, 0, 0, 0 };   /* CFG-MSG: NAV-DOP @1Hz on UART1 */
-    const uint8_t rate[6] = { 0xE8, 0x03, 0x01, 0x00, 0x01, 0x00 };         /* CFG-RATE: 1000 ms, GPS time */
-    uint8_t nav5[36] = { 0x01, 0x00, 3 };                                   /* CFG-NAV5: dynModel = pedestrian */
-    int ok = 1;
-    ubx_tx(0x06, 0x01, pvt, 7);  ok &= ubx_wait_ack(0x06, 0x01);  /* NAV-PVT */
-    ubx_tx(0x06, 0x01, dop, 7);  ok &= ubx_wait_ack(0x06, 0x01);  /* NAV-DOP */
-    ubx_tx(0x06, 0x08, rate, 6); ok &= ubx_wait_ack(0x06, 0x08);  /* CFG-RATE */
-    ubx_tx(0x06, 0x24, nav5, 36);ok &= ubx_wait_ack(0x06, 0x24);  /* CFG-NAV5 */
-    printf("GPS config %s\r\n", ok ? "ACK" : "NAK");
-}
 
-/* Wait up to ACK_TIMEOUT_MS for a UBX-ACK-ACK matching (cls,id) after a config command.
-   Drains the GPS ring buffer and feeds bytes through the UBX parser. */
+/* Wait up to 600 ms for a UBX-ACK-ACK matching (cls,id) after a config command.
+   Drains the GPS ring buffer non-blockingly and feeds bytes through UBX parser. */
 static int ubx_wait_ack(uint8_t cls, uint8_t id)
 {
     uint32_t t0 = HAL_GetTick();
     ubx_ack_clear();
-    while ((int32_t)(HAL_GetTick() - t0) < ACK_TIMEOUT_MS) {
+    while ((int32_t)(HAL_GetTick() - t0) < 600) {
         uint8_t c;
-        while (rb_get(&gps_rb, &c))
+        while (rb_get(&gps_rb, &c)) {
             ubx_feed(&ubx, c, &g_gps, HAL_GetTick());
+        }
         if (ubx_ack_seen(cls, id)) return 1;
         HAL_Delay(5);
     }
     return 0;
 }
 
+static void gps_configure(void)
+{
+    /* Keep UART2 at 9600 baud (u-blox factory default) */
+    /* 1. CFG-MSG: Enable NAV-PVT at 1 per navigation cycle on UART1 */
+    const uint8_t pvt[7]  = { 0x01, 0x07, 0, 1, 0, 0, 0 };
+    /* 2. CFG-MSG: Enable NAV-DOP at 1 per navigation cycle on UART1 */
+    const uint8_t dop[7]  = { 0x01, 0x04, 0, 1, 0, 0, 0 };
+    /* 3. CFG-RATE: 1000 ms (1 Hz) measurement rate for fast, sensitive satellite lock */
+    const uint8_t rate[6] = { 0xE8, 0x03, 0x01, 0x00, 0x01, 0x00 };
+    /* 4. CFG-NAV5: dynModel = portable (0) for fast acquisition / low thresholds */
+    uint8_t nav5[36]      = { 0x01, 0x00, 0 };
+
+    int ok = 1;
+    ubx_tx(0x06, 0x01, pvt, 7);  ok &= ubx_wait_ack(0x06, 0x01);
+    ubx_tx(0x06, 0x01, dop, 7);  ok &= ubx_wait_ack(0x06, 0x01);
+    ubx_tx(0x06, 0x08, rate, 6); ok &= ubx_wait_ack(0x06, 0x08);
+    ubx_tx(0x06, 0x24, nav5, 36);ok &= ubx_wait_ack(0x06, 0x24);
+    printf("GPS config %s\r\n", ok ? "ACK" : "NAK/TIMEOUT");
+}
+
 /* ------------------------------------------------------------------ LCD */
 static void lcd_update(uint32_t now)
 {
     char a[24], b[24]; int t = g_env.temp_c100;
-    snprintf(a, sizeof a, "F%u S%02u TX%04u", g_gps.fix, g_gps.sats, g_tx_count);
-    snprintf(b, sizeof b, "%d.%uC %u%% R:%c%03u", t / 100, (unsigned)((t < 0 ? -t : t) % 100) / 10,
-             g_env.hum_c100 / 100, g_rad.state ? 'M' : '-', g_rad.mov_cm > 999 ? 999 : g_rad.mov_cm);
+    if (!g_gps.last_ms) {
+        snprintf(a, sizeof a, "Wait GPS data...");
+    } else {
+        snprintf(a, sizeof a, "F%u S%02u TX%04u", g_gps.fix, g_gps.sats, g_tx_count);
+    }
+
+    /* Row 1: If GPS has valid fix, alternate every 3 seconds between Environmental and Coordinates */
+    if (g_gps.fix >= 2 && ((now / 3000u) & 1)) {
+        int32_t lat = g_gps.lat_e7;
+        int32_t lon = g_gps.lon_e7;
+        char lat_c = (lat >= 0) ? 'N' : 'S';
+        char lon_c = (lon >= 0) ? 'E' : 'W';
+        if (lat < 0) lat = -lat;
+        if (lon < 0) lon = -lon;
+        snprintf(b, sizeof b, "%02ld.%04ld%c %03ld.%03ld%c",
+                 (long)(lat / 10000000L), (long)((lat % 10000000L) / 1000L), lat_c,
+                 (long)(lon / 10000000L), (long)((lon % 10000000L) / 10000L), lon_c);
+    } else {
+        snprintf(b, sizeof b, "%d.%uC %u%% R:%c%03u", t / 100, (unsigned)((t < 0 ? -t : t) % 100) / 10,
+                 g_env.hum_c100 / 100, g_rad.state ? 'M' : '-', g_rad.mov_cm > 999 ? 999 : g_rad.mov_cm);
+    }
     (void)now; lcd_print(0, a); lcd_print(1, g_estop ? "** E-STOP **" : b);
 }
 
 /* ------------------------------------------------------------------ init / loop */
+/* Independent Watchdog: LSI ~32 kHz, prescaler /256 (PR=6), reload 500
+ * Timeout = (500+1) * 256 / 32000 ≈ 4.0 seconds window.  Kick in app_loop() each pass. */
+static void iwdg_init(void)
+{
+    /* Enable LSI clock */
+    RCC->CSR |= RCC_CSR_LSION;
+    uint32_t t0 = HAL_GetTick();
+    while (!(RCC->CSR & RCC_CSR_LSIRDY)) {
+        if (HAL_GetTick() - t0 > 100) break;
+    }
+
+    IWDG->KR = 0x00005555u;          /* enable write access to PR/RLR */
+    uint32_t sr_t0 = HAL_GetTick();
+    while (IWDG->SR != 0u) {
+        if (HAL_GetTick() - sr_t0 > 50) break;
+    }
+    IWDG->PR = 6u;                   /* /256 prescaler */
+    IWDG->RLR = 500u;                /* ~4.0s window */
+    sr_t0 = HAL_GetTick();
+    while (IWDG->SR != 0u) {
+        if (HAL_GetTick() - sr_t0 > 50) break;
+    }
+    IWDG->KR = 0x0000CCCCu;          /* start the watchdog */
+    IWDG->KR = 0x0000AAAAu;          /* first reload (kick) */
+}
+
 void app_init(void)
 {
-    printf("\r\nArtemis TX start\r\n");
-    g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Artemis booting");
+    const char *boot_msg = "\r\n=== SENDER TX BOOT ===\r\n";
+    HAL_UART_Transmit(&huart3, (uint8_t *)boot_msg, (uint16_t)strlen(boot_msg), 100);
+    printf("Sender TX start\r\n");
+
+    /* All inits below return quickly with an ok/fail flag.  None blocks
+     * indefinitely: lcd_init is time-bounded, bme/radio/gps use bounded HAL
+     * timeouts, and app_loop retries LCD hot-plug every 1500 ms. */
+    g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Sender booting");
     g_bme_ok = (bme_port_init() == 0);   printf("BME688 %s\r\n", g_bme_ok ? "ok" : "FAIL");
+    if (g_bme_ok) {
+        bsec_library_return_t bsec_ret = bsec_wrapper_init();
+        printf("BSEC init %s\r\n", bsec_ret == BSEC_OK ? "ok" : "FAIL");
+    }
     int r = radio_init();                printf("SX1262 %s\r\n", r == 0 ? "ok" : "FAIL");
+    if (r == 0) radio_start_rx();
     HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
     gps_configure();
     bucket_t = HAL_GetTick(); bucket_us = BUCKET_MAX_US;
     rnd_state ^= DWT->CYCCNT | 1u;
-    radio_start_rx();
+
+    /* Start the independent watchdog once all peripherals are configured */
+    iwdg_init();
+    printf("App ready, entering main loop\r\n");
+}
+
+/* Pure integer decimal string parser scaled by 10^decimals (no float/double FPU) */
+static int32_t parse_fixed(const char *s, int decimals)
+{
+    if (!s || !*s) return 0;
+    int sign = 1;
+    if (*s == '-') { sign = -1; s++; }
+    else if (*s == '+') s++;
+    int32_t val = 0;
+    while (*s >= '0' && *s <= '9') {
+        val = val * 10 + (*s - '0');
+        s++;
+    }
+    if (*s == '.') {
+        s++;
+        int count = 0;
+        while (*s >= '0' && *s <= '9' && count < decimals) {
+            val = val * 10 + (*s - '0');
+            s++; count++;
+        }
+        while (count < decimals) {
+            val *= 10; count++;
+        }
+    } else {
+        for (int i = 0; i < decimals; i++) val *= 10;
+    }
+    return val * sign;
+}
+
+/* Parse NMEA DDMM.MMMMM into 1e7 decimal degrees using pure integer math */
+static int32_t parse_nmea_coord(const char *s, char hemi, int is_lon)
+{
+    if (!s || !*s) return 0;
+    const char *dot = strchr(s, '.');
+    int min_start = 0;
+    if (dot) {
+        min_start = (int)(dot - s) - 2;
+        if (min_start < 0) min_start = 0;
+    } else {
+        min_start = is_lon ? 3 : 2;
+    }
+    int deg = 0;
+    for (int i = 0; i < min_start; i++) {
+        if (s[i] >= '0' && s[i] <= '9') deg = deg * 10 + (s[i] - '0');
+    }
+    int32_t min_1e5 = parse_fixed(s + min_start, 5);
+    int64_t deg_1e7 = (int64_t)deg * 10000000LL + ((int64_t)min_1e5 * 100LL) / 60LL;
+    if (hemi == 'S' || hemi == 'W') deg_1e7 = -deg_1e7;
+    return (int32_t)deg_1e7;
 }
 
 void app_loop(void)
@@ -310,12 +470,110 @@ void app_loop(void)
     static uint32_t t_gps, t_hb, t_pwr, t_env, t_tel, t_lcd, t_alert; static uint8_t last_det;
     uint32_t now = HAL_GetTick(); uint8_t c;
 
+    /* Kick the independent watchdog every pass (~500 ms window) so a
+     * transient fault or brownout triggers an automatic reset + reboot. */
+    IWDG->KR = 0x0000AAAAu;
+
     while (rb_get(&gps_rb, &c)) {
-        static uint32_t gps_dbg_count = 0;
-        gps_dbg_count++;
-        if (gps_dbg_count <= 10 || gps_dbg_count % 200 == 1) {
-            printf("GPS raw byte %lu: 0x%02X '%c'\n", (unsigned long)gps_dbg_count, c, (c >= 32 && c < 127) ? c : '.');
+        /* ---- NMEA sentence collection ---- */
+        if (c == '$') {
+            nmea_len = 0; nmea_in_msg = true; nmea_buf[nmea_len++] = (char)c; nmea_buf[nmea_len] = '\0';
         }
+        else if (nmea_in_msg) {
+            if (c == '\n' || c == '\r') {
+                if (nmea_len > 0) {
+                    nmea_buf[nmea_len] = '\0';
+                    printf("[NMEA] %s\r\n", nmea_buf);
+                    /* Safe field extraction using comma tokens */
+                    char *f[18] = {0};
+                    int f_idx = 0;
+                    char *cur = nmea_buf;
+                    while (cur && f_idx < 18) {
+                        f[f_idx++] = cur;
+                        cur = strchr(cur, ',');
+                        if (cur) {
+                            *cur = '\0';
+                            cur++;
+                        }
+                    }
+
+                    if (strncmp(nmea_buf, "$GPGGA", 6) == 0 || strncmp(nmea_buf, "$GNGGA", 6) == 0) {
+                        /* f[0]=sentence, f[1]=time, f[2]=lat, f[3]=N/S, f[4]=lon, f[5]=E/W, f[6]=fix, f[7]=sats */
+                        if (f_idx > 6 && f[6] && *f[6]) {
+                            uint8_t q = (uint8_t)atoi(f[6]);
+                            if (q > 0) {
+                                g_gps.fix = (q == 1) ? 3 : (q == 2 ? 4 : q);
+                            } else {
+                                g_gps.fix = 0;
+                            }
+                        }
+                        if (f_idx > 7 && f[7] && *f[7]) {
+                            uint8_t used = (uint8_t)atoi(f[7]);
+                            if (used > 0 || g_gps.fix > 0) g_gps.sats = used;
+                        }
+                        if (f_idx > 3 && f[2] && *f[2] && f[3] && *f[3]) {
+                            g_gps.lat_e7 = parse_nmea_coord(f[2], *f[3], 0);
+                        }
+                        if (f_idx > 5 && f[4] && *f[4] && f[5] && *f[5]) {
+                            g_gps.lon_e7 = parse_nmea_coord(f[4], *f[5], 1);
+                        }
+                        if (f_idx > 8 && f[8] && *f[8]) {
+                            int32_t hdop = parse_fixed(f[8], 1);
+                            if (hdop > 0 && hdop < 990) g_gps.hdop_x10 = (uint8_t)hdop;
+                        }
+                        if (f_idx > 9 && f[9] && *f[9]) {
+                            g_gps.alt_cm = parse_fixed(f[9], 2);
+                        }
+                        g_gps.last_ms = now ? now : 1;
+                    }
+                    else if (strncmp(nmea_buf, "$GPRMC", 6) == 0 || strncmp(nmea_buf, "$GNRMC", 6) == 0) {
+                        /* f[2]=status ('A'=valid, 'V'=warning) */
+                        if (f_idx > 2 && f[2] && *f[2] == 'A') {
+                            if (g_gps.fix == 0) g_gps.fix = 3;
+                        }
+                        /* f[7]=speed_knots, f[8]=cog_degrees */
+                        if (f_idx > 7 && f[7] && *f[7]) {
+                            /* knots * 51.4444 cm/s */
+                            int32_t k100 = parse_fixed(f[7], 2);
+                            g_gps.speed_cms = (uint16_t)((k100 * 5144LL) / 10000LL);
+                        }
+                        if (f_idx > 8 && f[8] && *f[8]) {
+                            g_gps.hdg_cdeg = (uint16_t)parse_fixed(f[8], 2);
+                        }
+                        g_gps.last_ms = now ? now : 1;
+                    }
+                    else if (strncmp(nmea_buf, "$GPGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GLGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GAGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GBGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GNGSV", 6) == 0) {
+                        static uint8_t gsv_gp = 0, gsv_gl = 0, gsv_ga = 0, gsv_gb = 0;
+                        if (strncmp(nmea_buf, "$GPGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gp = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GLGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gl = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GAGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_ga = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GBGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gb = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GNGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gp = (uint8_t)atoi(f[3]);
+                        }
+                        uint16_t total_view = (uint16_t)gsv_gp + gsv_gl + gsv_ga + gsv_gb;
+                        if (total_view > 99) total_view = 99;
+                        if (g_gps.fix == 0) {
+                            g_gps.sats = (uint8_t)total_view;
+                        }
+                        g_gps.last_ms = now ? now : 1;
+                    }
+                }
+                nmea_in_msg = false;
+            }
+            else if (nmea_len < sizeof(nmea_buf) - 1) {
+                nmea_buf[nmea_len++] = (char)c;
+            }
+        }
+        /* ---- UBX binary parsing (fallback if module switched to UBX) ---- */
         ubx_feed(&ubx, c, &g_gps, now);
     }
     while (rb_get(&ld_rb, &c))
@@ -340,14 +598,67 @@ void app_loop(void)
     if (g_bme_ok) {                                           /* non-blocking forced-mode cycle */
         if (!g_bme_busy && now - t_env >= ENV_MS) { if (bme_port_trigger() == 0) { g_bme_busy = 1; g_bme_t0 = now; } t_env = now; }
         else if (g_bme_busy && now - g_bme_t0 >= bme_port_meas_ms()) {
-            g_bme_busy = 0; g_env_ok = (bme_port_read(&g_env) == 0); if (g_env_ok) send_env(now);
+            g_bme_busy = 0; g_env_ok = (bme_port_read(&g_env) == 0);
+            if (g_env_ok) {
+                printf("BME688: Temp=%d.%02d C, Hum=%d.%02d %%, Press=%d hPa\r\n",
+                       g_env.temp_c100 / 100, abs(g_env.temp_c100 % 100),
+                       g_env.hum_c100 / 100, g_env.hum_c100 % 100,
+                       g_env.press_dhpa / 10);
+                /* Compute IAQ via BSEC */
+                uint16_t iaq = 0xFFFF;
+                uint8_t iaq_acc = 0;
+                float temp = g_env.temp_c100 / 100.0f;
+                float hum = g_env.hum_c100 / 100.0f;
+                float press = g_env.press_dhpa * 100.0f;   /* dhPa -> Pa */
+                bsec_wrapper_process(temp, hum, press, (float)g_env.gas_ohm, &iaq, &iaq_acc);
+                g_env.iaq = iaq;
+                g_env.iaq_accuracy = iaq_acc;
+                send_env(now);
+            } else {
+                g_bme_ok = 0;
+                printf("BME688 read failed; retrying sensor initialization\r\n");
+            }
+        }
+    } else {
+        static uint32_t last_bme_retry = 0;
+        if (now - last_bme_retry >= 2500) {
+            last_bme_retry = now;
+            if (bme_port_init() == 0) {
+                g_bme_ok = 1;
+                printf("\r\n*** BME688 DETECTED & INITIALIZED! ***\r\n");
+            }
         }
     }
-    if (g_gps.last_ms && now - t_gps >= GPS_PERIOD_MS) { t_gps = now; send_gps(now); }
+    if (g_gps.last_ms && now - t_gps >= GPS_PERIOD_MS) {
+        t_gps = now;
+        send_gps(now);
+    }
+    /* Periodic diagnostic print every 2 seconds */
+    static uint32_t gps_log_t = 0;
+    if (now - gps_log_t >= 2000) {
+        gps_log_t = now;
+        printf("[STATUS] fix=%u sats=%u lat=%ld lon=%ld alt=%ldcm | TX=%u drops=%u\r\n",
+               g_gps.fix, g_gps.sats, (long)g_gps.lat_e7, (long)g_gps.lon_e7, (long)g_gps.alt_cm, g_tx_count, g_drops);
+    }
     if (now - t_hb  >= HEARTBEAT_MS) { t_hb  = now; send_status(now); }
     if (now - t_pwr >= POWER_MS)     { t_pwr = now; send_power(now); }
     if (now - t_tel >= TELEM_MS)     { t_tel = now; send_telemetry(now); }
-    if (now - t_lcd >= LCD_MS)       { t_lcd = now; if (g_lcd_ok) lcd_update(now); }
+    if (now - t_lcd >= LCD_MS) {
+        t_lcd = now;
+        if (g_lcd_ok) {
+            lcd_update(now);
+        } else {
+            static uint32_t last_lcd_retry = 0;
+            if (now - last_lcd_retry >= 1500) {
+                last_lcd_retry = now;
+                if (lcd_init() == 0) {
+                    g_lcd_ok = 1;
+                    lcd_print(0, "Artemis Online");
+                    printf("\r\n*** LCD HOT-PLUG DETECTED & INITIALIZED! ***\r\n");
+                }
+            }
+        }
+    }
 
     duty_refill(now);
     tx_try(now);

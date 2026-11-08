@@ -131,11 +131,13 @@ static int frag_process(const pl_frag_t *fh, const uint8_t *payload, uint8_t len
     /* Mark fragment received */
     slot->frag_mask |= (1 << fh->frag_num);
     
-    /* Copy data */
-    uint16_t offset = fh->frag_num * (len); /* Assumes uniform chunk size */
+    /* Copy data using protocol standard FRAG_CHUNK offset */
+    uint16_t offset = (uint16_t)fh->frag_num * FRAG_CHUNK;
     if (offset + len <= sizeof(slot->data)) {
         memcpy(slot->data + offset, payload, len);
-        slot->data_len = (uint8_t)(offset + len);
+        if (offset + len > slot->data_len) {
+            slot->data_len = (uint8_t)(offset + len);
+        }
     }
     
     /* Check if complete */
@@ -291,9 +293,12 @@ static void emit_json(void)
     /* IAQ: reject STM32 0xFFFF placeholder (no valid gas sensor reading) */
     uint32_t iaq_val = (shadow.env.iaq == 0xFFFF) ? 0u : (uint32_t)(shadow.env.iaq / 10);
     
+    /* Env validity: requires non-zero sensor reading (atmospheric pressure >= 300 hPa / 3000 dhPa) */
+    uint8_t is_env_valid = (env_valid && shadow.env.press_dhpa >= 3000u) ? 1u : 0u;
+    
     /* Anomaly flag: gas_valid bit (b0) clear in env.flags indicates anomalous
-     * environmental reading. Only evaluated if actual env telemetry has been received. */
-    uint8_t anomaly_flag = (env_valid && !(shadow.env.flags & 0x01)) ? 1u : 0u;
+     * environmental reading. Only evaluated if actual env telemetry has been received and gas sensor is active. */
+    uint8_t anomaly_flag = (is_env_valid && shadow.env.gas_ohm > 0 && !(shadow.env.flags & 0x01)) ? 1u : 0u;
 
     /* Use hysteresis so GPS jitter around walking pace cannot flap the UI
      * between WALKING and STANDBY for small movements. */
@@ -359,7 +364,7 @@ static void emit_json(void)
         temp_c, humidity, pressure_hpa, gas_kohm,
         (unsigned int)iaq_val,
         (anomaly_flag ? "true" : "false"),
-        (env_valid ? "true" : "false"),
+        (is_env_valid ? "true" : "false"),
         shadow.radar.human ? "true" : "false",
         shadow.radar.target_state == 0 ? "NO_TARGET" : (shadow.radar.target_state == 1 ? "MOVING" : (shadow.radar.target_state == 2 ? "STATIONARY" : "COMBINED")),
         radar_dist_cm, shadow.radar.mov_energy,

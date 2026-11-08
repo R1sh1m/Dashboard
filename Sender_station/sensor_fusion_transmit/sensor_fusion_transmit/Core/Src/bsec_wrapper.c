@@ -8,6 +8,7 @@
 #include "bsec/bsec_interface.h"
 #endif
 #include "main.h"
+#include <stdio.h>
 #include <string.h>
 
 static uint8_t bsec_work_buffer[BSEC_MAX_WORKBUFFER_SIZE];
@@ -24,11 +25,11 @@ bsec_library_return_t bsec_wrapper_init(void)
     /* Initialize BSEC instance */
     bsec_inst = (void *)0;
     bsec_library_return_t ret = bsec_init(&bsec_inst);
-    if (ret != BSEC_OK) return ret;
+    if (ret != BSEC_OK) { printf("  BSEC bsec_init failed: %d\r\n", (int)ret); return ret; }
 
     /* Load configuration */
     ret = bsec_set_configuration(&bsec_inst, bsec_config_data, sizeof(bsec_config_data), bsec_work_buffer, sizeof(bsec_work_buffer));
-    if (ret != BSEC_OK) return ret;
+    if (ret != BSEC_OK) { printf("  BSEC bsec_set_configuration failed: %d\r\n", (int)ret); return ret; }
 
     /* Subscribe to IAQ output */
     bsec_sensor_configuration_t virtual_sensors[1];
@@ -39,7 +40,7 @@ bsec_library_return_t bsec_wrapper_init(void)
     virtual_sensors[0].sample_rate = BSEC_SAMPLE_RATE_LP;  /* 0.33 Hz = 3s */
 
     ret = bsec_update_subscription(&bsec_inst, virtual_sensors, 1, required_sensors, &n_required);
-    if (ret != BSEC_OK) return ret;
+    if (ret != BSEC_OK) { printf("  BSEC bsec_update_subscription failed: %d\r\n", (int)ret); return ret; }
 
     bsec_initialized = 1;
     return BSEC_OK;

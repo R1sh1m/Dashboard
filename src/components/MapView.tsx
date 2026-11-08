@@ -625,6 +625,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       : (gps && gps.lng !== 0 ? gps.lng : null) ?? (homePosition?.lng && homePosition.lng !== 0 ? homePosition.lng : null) ?? fallbackLng;
     setViewVisible([targetLat, targetLng], 18, { animate: true });
     warningMarkerRef.current?.openPopup();
+    setTimeout(() => {
+      warningMarkerRef.current?.openPopup();
+    }, 250);
   };
 
   const recenterRobot = () => {

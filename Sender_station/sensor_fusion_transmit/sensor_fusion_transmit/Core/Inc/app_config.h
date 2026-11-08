@@ -24,7 +24,7 @@
 #define DUTY_WINDOW_S      3600u
 
 /* ---- fragmentation ---- */
-#define FRAG_CHUNK         24u
+#define FRAG_CHUNK         28u
 
 /* ---- power estimation model (no sensors on the pack!) ---- */
 #define BATT_CAP_MAH       10000u
