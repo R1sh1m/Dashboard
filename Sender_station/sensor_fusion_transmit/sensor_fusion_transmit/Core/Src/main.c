@@ -129,7 +129,7 @@ int main(void)
   MX_USART2_UART_Init();   /* GPS on PD5/PD6 */
   MX_UART5_Init();         /* Radar on PB12/PB13 */
   MX_SPI1_Init();          /* SX1262 LoRa on SPI1 */
-  const char *uart_msg = "\r\n=== Artemis Boot Test ===\r\n";
+  const char *uart_msg = "\r\n=== Sender Boot ===\r\n";
   HAL_UART_Transmit(&huart3, (uint8_t*)uart_msg, (uint16_t)strlen(uart_msg), 100);
   printf("USART3, I2C1, I2C2, and I2C3 initialized\r\n");
 
@@ -365,23 +365,23 @@ static void MX_SPI1_Init(void)
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN SPI1_Init 2 */
-
+  SET_BIT(hspi1.Instance->CR2, SPI_RXFIFO_THRESHOLD_QF);
   /* USER CODE END SPI1_Init 2 */
 
 }
@@ -625,32 +625,43 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
-  HAL_GPIO_WritePin(LORA_NSS_GPIO_Port, LORA_NSS_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(LORA_NRST_GPIO_Port, LORA_NRST_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(LORA_TXEN_GPIO_Port, LORA_TXEN_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LORA_RXEN_GPIO_Port, LORA_RXEN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_3, GPIO_PIN_SET);
 
-  /* PA4 - NSS */
-  GPIO_InitStruct.Pin = LORA_NSS_Pin;
+  /* PA4 & PD14 - NSS (Arduino D10 is PD14 on CN7/16, PA4 on CN7/17) */
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(LORA_NSS_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /* PE11 - NRST, PE13 - RXEN */
-  GPIO_InitStruct.Pin = LORA_NRST_Pin | LORA_RXEN_Pin;
+  GPIO_InitStruct.Pin = GPIO_PIN_14;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* PE11 & PF3 - NRST (Arduino D8 is PF3 on CN7/20, PE11 on CN10/6) */
+  GPIO_InitStruct.Pin = GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /* PF14 - TXEN */
-  GPIO_InitStruct.Pin = LORA_TXEN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
+  /* PE13 (RXEN) & PF14 (TXEN) as inputs to avoid fighting external hardware jumpers */
+  GPIO_InitStruct.Pin = LORA_RXEN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(LORA_RXEN_GPIO_Port, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LORA_TXEN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(LORA_TXEN_GPIO_Port, &GPIO_InitStruct);
 
   /* PF13 - BUSY */
   GPIO_InitStruct.Pin = LORA_BUSY_Pin;

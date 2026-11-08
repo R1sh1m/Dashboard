@@ -193,7 +193,7 @@ The main loop (`app_loop()`) runs at ~100 Hz and:
 ```
 STM32 Nucleo                          ESP32 Ground Receiver
 ┌─────────────────┐                   ┌──────────────────┐
-│  SX1262 LoRa    │─── LoRa RF ───────│  SX1261 LoRa     │
+│  SX1262 LoRa    │─── LoRa RF ───────│  SX1262 LoRa     │
 │  (SPI1)         │                   │  (SPI)           │
 │  BME688         │                   │  USB-CDC ───────►│ React Dashboard
 │  (I2C1)         │                   │  (115200 baud)   │

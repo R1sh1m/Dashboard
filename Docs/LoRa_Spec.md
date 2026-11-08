@@ -17,7 +17,7 @@
 | Coding Rate | 4/5 | |
 | Preamble | 12 symbols | |
 | Sync Word | 0x12 | Private network |
-| TX Power | 14 dBm | SX1261 max +15, SX1262 max +22 |
+| TX Power | 14 dBm | SX1262 max +22 dBm |
 | CRC | Header + Payload | CCITT-FALSE |
 | Duty Cycle | 1% (10 permille) | ETSI EN 300 220 |
 

@@ -7,6 +7,7 @@
 #include "ld2412.h"
 #include "lora_radio.h"
 #include "bme688_port.h"
+#include "bsec_wrapper.h"
 #include "lcd_i2c.h"
 #include <stdio.h>
 #include <string.h>
@@ -193,12 +194,41 @@ static uint8_t sensor_flags(uint32_t now)
     return (uint8_t)((g_gps.fix >= 2 ? 1 : 0) | (g_bme_ok && g_env_ok ? 2 : 0) |
                      ((g_rad.t_ms && now - g_rad.t_ms < 2000) ? 4 : 0) | (g_lcd_ok ? 8 : 0));
 }
-static void power_est(uint32_t now, uint16_t *mv, uint16_t *ma, uint8_t *soc)
-{   /* ESTIMATE ONLY: assumes pack full at boot and constant average load */
-    uint32_t used = (uint32_t)((uint64_t)AVG_LOAD_MA * (now / 1000u) / 3600u);
-    uint32_t s = used >= BATT_CAP_MAH ? 0 : 100u - used * 100u / BATT_CAP_MAH;
-    *soc = (uint8_t)s; *ma = AVG_LOAD_MA;
-    *mv = (uint16_t)(9900u + (12600u - 9900u) * s / 100u);    /* 3S: 3.3..4.2 V per cell */
+static void power_read_adc(uint32_t now, uint16_t *mv, uint16_t *ma, uint8_t *soc)
+{   /* REAL ADC sensing: pack voltage via voltage divider on ADC1_IN0 (PA0),
+     * current via shunt amplifier on ADC1_IN1 (PA1). Direct register access
+     * (no HAL ADC driver in this project). */
+    static int adc_init_done = 0;
+    if (!adc_init_done) {
+        RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;          /* enable ADC1 clock */
+        GPIOA->MODER |= (3u << (0 * 2)) | (3u << (1 * 2));  /* PA0, PA1 analog mode */
+        ADC1->CR1 = 0;
+        ADC1->CR2 = 0;
+        ADC1->SQR1 = 0;                              /* 1 conversion */
+        ADC1->SQR2 = 0;
+        ADC1->SQR3 = 0;                              /* channel 0 first */
+        ADC1->SMPR2 = 0;                             /* 3-cycle sampling */
+        ADC1->CR2 |= ADC_CR2_ADON;                   /* enable ADC */
+        adc_init_done = 1;
+    }
+    /* Channel 0: pack voltage */
+    ADC1->SQR3 = 0;
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+    while (!(ADC1->SR & ADC_SR_EOC));
+    uint32_t adc_v = ADC1->DR;
+    *mv = (uint16_t)((uint64_t)adc_v * 3300u * 11u / 4095u);
+    /* Channel 1: pack current */
+    ADC1->SQR3 = 1u;
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+    while (!(ADC1->SR & ADC_SR_EOC));
+    uint32_t adc_i = ADC1->DR;
+    *ma = (uint16_t)((uint64_t)adc_i * 806u / 500u);
+    /* SoC from voltage (3S: 3.3..4.2 V per cell = 9900..12600 mV) */
+    uint32_t s = 0;
+    if (*mv >= 12600u) s = 100;
+    else if (*mv <= 9900u) s = 0;
+    else s = 100u * (*mv - 9900u) / (12600u - 9900u);
+    *soc = (uint8_t)s;
 }
 static void send_gps(uint32_t now)
 {
@@ -219,15 +249,16 @@ static void send_status(uint32_t now)
 static void send_power(uint32_t now)
 {
     uint16_t mv, ma; uint8_t soc;
-    power_est(now, &mv, &ma, &soc);
+    power_read_adc(now, &mv, &ma, &soc);
     pl_power_t p = { .t_ms = now, .est_mv = mv, .est_ma = ma, .est_soc = soc };
     txq_push(PKT_POWER_CRIT, 0, 2, 0, &p, sizeof p, 1);
 }
+
 static void send_env(uint32_t now)
 {
     pl_env_t p = { now, g_env.temp_c100, g_env.hum_c100, g_env.press_dhpa, g_env.gas_ohm,
-                   0xFFFF /* IAQ n/a without BSEC */, (uint8_t)(g_env.gas_valid | (g_env.heat_stab << 1)) };
-    txq_push(PKT_ENV, 0, 3, 0, &p, sizeof p, 1);
+                   g_env.iaq, (uint8_t)(g_env.gas_valid | (g_env.heat_stab << 1)) };
+    txq_push(PKT_ENV, 0, 2, 0, &p, sizeof p, 1);
 }
 static void send_fragmented(uint8_t type, const uint8_t *data, uint16_t len)
 {
@@ -245,7 +276,7 @@ static void send_telemetry(uint32_t now)
     pl_telem_t t = { now, now / 1000u, g_gps.lat_e7, g_gps.lon_e7, g_gps.alt_cm, g_gps.speed_cms,
                      g_gps.hdg_cdeg, g_gps.fix, g_gps.sats, g_env.temp_c100, g_env.hum_c100,
                      g_env.press_dhpa, g_rad.state, 0, sensor_flags(now) };
-    uint16_t mv, ma; power_est(now, &mv, &ma, &t.soc);
+    uint16_t mv, ma; uint8_t soc_dummy; power_read_adc(now, &mv, &ma, &soc_dummy); t.soc = soc_dummy;
     if (sizeof t <= FRAG_CHUNK) txq_push(PKT_TELEMETRY, 0, 3, 0, &t, sizeof t, 1);
     else send_fragmented(PKT_TELEMETRY, (const uint8_t *)&t, sizeof t);
 }
@@ -258,8 +289,25 @@ static void ubx_tx(uint8_t cls, uint8_t id, const uint8_t *pl, uint16_t len)
 }
 static void gps_configure(void)
 {
+    /* 1. Switch NEO-M8N UART to 115200 baud via UBX-CFG-PRT (28 bytes, per Docs/Datasheets/NEO-M8_Datasheet_Summary.md §5.2)
+     *    Payload: portID=1(UART1), mode=8N1, baudRate=0x0001C200=115200, inProto=UBX+NMEA, outProto=UBX+NMEA */
+    const uint8_t cfg_prt[28] = { 0xB5,0x62,0x06,0x00,0x14,0x00, 0x01,0x00,0x00,0x00, 0x00,0xC2,0x01,0x00,
+                                  0x00,0xC2,0x01,0x00,0x07,0x00,0x03,0x00,0x00,0x00,0x00,0x00,0xAB,0x72 };
+    /* cfg_prt is already a complete UBX message (header+payload+checksum). Send raw, do NOT wrap via ubx_tx.
+     * baudRate=0x0001C200=115200 at payload offset 4, inProtoMask=UBX+NMEA, outProtoMask=UBX+NMEA. */
+    HAL_UART_Transmit(&huart2, cfg_prt, 28, 100);
+    HAL_Delay(100);  /* let module process CFG-PRT and switch to 115200 before we touch BRR */
+
+    /* After CFG-PRT the module switches its UART to 115200. Reconfigure huart2 to match before any further traffic. */
+    HAL_UART_Abort(&huart2);
+    huart2.Init.BaudRate = 115200;
+    HAL_UART_Init(&huart2);
+    HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
+    HAL_Delay(50);
+
+    /* 2. Set navigation rate to 10 Hz (100 ms) via CFG-RATE */
     const uint8_t pvt[3] = { 0x01, 0x07, 1 }, dop[3] = { 0x01, 0x04, 1 };   /* CFG-MSG: NAV-PVT, NAV-DOP @1 */
-    const uint8_t rate[6] = { 0xE8, 0x03, 0x01, 0x00, 0x01, 0x00 };         /* CFG-RATE: 1000 ms, GPS time */
+    const uint8_t rate[6] = { 0x64, 0x00, 0x01, 0x00, 0x01, 0x00 };         /* CFG-RATE: 100 ms measRate, GPS time, 1 nav solution */
     uint8_t nav5[36] = { 0x01, 0x00, 3 };                                   /* CFG-NAV5: dynModel = pedestrian */
     ubx_tx(0x06, 0x01, pvt, 3); ubx_tx(0x06, 0x01, dop, 3);
     ubx_tx(0x06, 0x08, rate, 6); ubx_tx(0x06, 0x24, nav5, 36);
@@ -296,16 +344,21 @@ static void lcd_update(uint32_t now)
 /* ------------------------------------------------------------------ init / loop */
 void app_init(void)
 {
-    const char *boot_msg = "\r\n=== ARTEMIS TX BOOT ===\r\n";
+    const char *boot_msg = "\r\n=== SENDER TX BOOT ===\r\n";
     HAL_UART_Transmit(&huart3, (uint8_t *)boot_msg, (uint16_t)strlen(boot_msg), 100);
-    printf("Artemis TX start\r\n");
-    g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Artemis booting");
+    printf("Sender TX start\r\n");
+    g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Sender booting");
     g_bme_ok = (bme_port_init() == 0);   printf("BME688 %s\r\n", g_bme_ok ? "ok" : "FAIL");
+    if (g_bme_ok) {
+        bsec_library_return_t bsec_ret = bsec_wrapper_init();
+        printf("BSEC init %s\r\n", bsec_ret == BSEC_OK ? "ok" : "FAIL");
+    }
     int r = radio_init();                printf("SX1262 %s\r\n", r == 0 ? "ok" : "FAIL");
     if (r == 0) radio_start_rx();
     HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
     gps_configure();
+    bucket_t = HAL_GetTick(); bucket_us = BUCKET_MAX_US;
     rnd_state ^= DWT->CYCCNT | 1u;
     printf("App ready, entering main loop\r\n");
 }
@@ -481,6 +534,15 @@ void app_loop(void)
                        g_env.temp_c100 / 100, abs(g_env.temp_c100 % 100),
                        g_env.hum_c100 / 100, g_env.hum_c100 % 100,
                        g_env.press_dhpa / 10);
+                /* Compute IAQ via BSEC */
+                uint16_t iaq = 0xFFFF;
+                uint8_t iaq_acc = 0;
+                float temp = g_env.temp_c100 / 100.0f;
+                float hum = g_env.hum_c100 / 100.0f;
+                float press = g_env.press_dhpa * 100.0f;   /* dhPa -> Pa */
+                bsec_wrapper_process(temp, hum, press, (float)g_env.gas_ohm, &iaq, &iaq_acc);
+                g_env.iaq = iaq;
+                g_env.iaq_accuracy = iaq_acc;
                 send_env(now);
             }
         }

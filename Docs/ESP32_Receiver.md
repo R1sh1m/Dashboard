@@ -1,23 +1,23 @@
-# ESP32-S3 LoRa Receiver — Build & Flash Guide
+# ESP32 LoRa Receiver — Build & Flash Guide
 
-**Target:** ESP32-S3 (DevKit or NodeMCU)  
-**Radio:** SX1261 LoRa module  
+**Target:** ESP32 (DevKit or NodeMCU)  
+**Radio:** SX1262 LoRa module  
 **Toolchain:** ESP-IDF v6.0.x  
 **Purpose:** Ground-side LoRa receiver that bridges robot telemetry to the React dashboard over USB-CDC.
 
 ---
 
-## 1. Hardware Pinout (ESP32-S3 → SX1261)
+## 1. Hardware Pinout (ESP32 → SX1262)
 
-| SX1261 Pin | ESP32 GPIO | Function |
+| SX1262 Pin | ESP32 GPIO | Function |
 |------------|------------|----------|
 | NSS        | GPIO5      | SPI Chip Select (HSPI CS0) |
 | SCK        | GPIO18     | SPI Clock |
 | MOSI       | GPIO23     | SPI MOSI |
 | MISO       | GPIO19     | SPI MISO |
 | RESET      | GPIO14     | Reset (active low) |
-| BUSY       | GPIO27     | Busy input |
-| DIO1       | GPIO26     | IRQ (rising edge) |
+| BUSY       | GPIO13     | Busy input |
+| DIO1       | GPIO4      | IRQ (rising edge) |
 | TXEN       | GPIO25     | TX enable (if `LORA_USE_RXTX_PINS=1`) |
 | RXEN       | GPIO33     | RX enable (if `LORA_USE_RXTX_PINS=1`) |
 | VCC        | 3.3V       | Power |
@@ -44,7 +44,7 @@ C:\esp\v6.0.2\esp-idf\export.ps1
 # 1. Navigate to the ESP32 receiver project
 cd esp_receiver
 
-# 2. Set target (ESP32-S3)
+# 2. Set target (ESP32)
 idf.py set-target esp32s3
 
 # 3. Build
@@ -85,10 +85,10 @@ The ESP32 emits **newline-delimited JSON** (schema matches `src/types/telemetry.
 
 ### Serial output wiring
 
-`ground_bridge.c` writes the JSON to **UART0** (`uart_write_bytes(UART_NUM_0, ...)`), i.e. ESP32-S3 **GPIO1 (TX) / GPIO3 (RX)** at 115200 baud. Choose one of the following:
+`ground_bridge.c` writes the JSON to **UART0** (`uart_write_bytes(UART_NUM_0, ...)`), i.e. ESP32 **GPIO1 (TX) / GPIO3 (RX)** at 115200 baud. Choose one of the following:
 
 * **External USB-UART bridge** (recommended for the current firmware): wire the bridge's TX/RX to ESP32 GPIO3/GPIO1 (crossed), connect the bridge to the host over USB, and select its COM port (`/dev/ttyACM0` or `COMx`) in the dashboard. Matches the CP210x / CH340 / FTDI VID filters above.
-* **Native ESP32-S3 USB-CDC** (`/dev/ttyACM0`, VID 0x303A): switch the write target in `esp_receiver/main/ground_bridge.c` from `uart_write_bytes(UART_NUM_0, ...)` to the tinyusb CDC API (`CONFIG_USB_CDC_ENABLED` is already on in `sdkconfig.defaults`; add `esp_tinyusb` to the component `REQUIRES`). This is not yet wired up — see the TODO in `ground_bridge.c`.
+* **Native ESP32 USB-CDC** (`/dev/ttyACM0`, VID 0x303A): switch the write target in `esp_receiver/main/ground_bridge.c` from `uart_write_bytes(UART_NUM_0, ...)` to the tinyusb CDC API (`CONFIG_USB_CDC_ENABLED` is already on in `sdkconfig.defaults`; add `esp_tinyusb` to the component `REQUIRES`). This is not yet wired up — see the TODO in `ground_bridge.c`.
 
 Connect the ESP32/bridge via USB-C, open the dashboard at `http://localhost:5173`, click **Connect** in the Wireless Link card, and select the serial port.
 
@@ -104,7 +104,7 @@ Connectivity is reflected on the dashboard as follows:
 ```
 esp_receiver/
 ├── CMakeLists.txt              # Top-level ESP-IDF project
-├── sdkconfig.defaults          # Kconfig defaults (USB-CDC, ESP32-S3)
+├── sdkconfig.defaults          # Kconfig defaults (USB-CDC, ESP32)
 ├── main/
 │   ├── CMakeLists.txt          # Component registration
 │   ├── main.c                  # App entry point (radio poll loop)
@@ -145,4 +145,4 @@ All LoRa radio parameters are defined in `common/lora_cfg.h` and must match the 
 - **No packets received:** Verify antenna connection, frequency match, and that STM32 is transmitting.
 - **CRC failures:** Check SPI wiring and clock speed (max 2 MHz recommended).
 - **JSON not appearing on dashboard:** Verify USB-CDC port is selected and baud rate matches (115200).
-- **Radio init fails:** Check NSS/RESET/BUSY pin wiring; confirm SX1261 is powered.
+- **Radio init fails:** Check NSS/RESET/BUSY pin wiring; confirm SX1262 is powered.

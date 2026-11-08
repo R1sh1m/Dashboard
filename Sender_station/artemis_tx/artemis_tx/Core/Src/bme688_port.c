@@ -1,5 +1,6 @@
 /* Bosch BME68x_SensorAPI port: I2C1, forced mode, 300 C / 100 ms heater, non-blocking use */
 #include "bme688_port.h"
+#include "sensor_calib.h"
 #include "main.h"
 #include "bme68x.h"
 #include <string.h>
@@ -62,17 +63,19 @@ int bme_port_read(bme_sample_t *s)
     struct bme68x_data d; uint8_t n = 0;
     if (bme68x_get_data(BME68X_FORCED_MODE, &d, &n, &bme) != BME68X_OK || n == 0) return -1;
 #ifdef BME68X_USE_FPU                            /* float build (default) */
-    s->temp_c100 = (int16_t)(d.temperature * 100.0f);
-    s->hum_c100  = (uint16_t)(d.humidity * 100.0f);
-    s->press_dhpa = (uint16_t)(d.pressure / 10.0f);          /* Pa -> 0.1 hPa */
+    s->temp_c100 = (int16_t)((d.temperature * 100.0f) + BME688_TEMP_OFFSET_C * 100.0f);
+    s->hum_c100  = (uint16_t)((d.humidity * 100.0f) + BME688_HUM_OFFSET_PCT * 100.0f);
+    s->press_dhpa = (uint16_t)((d.pressure / 10.0f) + BME688_PRES_OFFSET_HPA * 10.0f);   /* Pa -> 0.1 hPa */
     s->gas_ohm   = (uint32_t)d.gas_resistance;
 #else                                            /* integer build: 0.01 C, Pa, 0.001 %RH */
-    s->temp_c100 = d.temperature;
-    s->hum_c100  = (uint16_t)(d.humidity / 10u);
-    s->press_dhpa = (uint16_t)(d.pressure / 10u);
+    s->temp_c100 = d.temperature + (int16_t)(BME688_TEMP_OFFSET_C * 100.0f);
+    s->hum_c100  = (uint16_t)((d.humidity / 10u) + BME688_HUM_OFFSET_PCT * 100.0f);
+    s->press_dhpa = (uint16_t)((d.pressure / 10u) + BME688_PRES_OFFSET_HPA * 10.0f);
     s->gas_ohm   = d.gas_resistance;
 #endif
     s->gas_valid = (d.status & BME68X_GASM_VALID_MSK) ? 1 : 0;
     s->heat_stab = (d.status & BME68X_HEAT_STAB_MSK) ? 1 : 0;
+    s->iaq = 0xFFFF;
+    s->iaq_accuracy = 0;
     return 0;
 }

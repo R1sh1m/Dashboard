@@ -13,8 +13,8 @@ from typing import Optional, Dict, Any, List
 import serial
 import serial.tools.list_ports
 
-from mcp.server.fastmcp import FastMCP  # type: ignore
-mcp = FastMCP("esp-idf-mcp")
+from mcp.server.mcpserver import MCPServer, Context
+mcp = MCPServer("esp-idf-mcp")
 
 WORKSPACE_DIR = Path(__file__).resolve().parents[2]
 BUILD_DIR = WORKSPACE_DIR / "build" if (WORKSPACE_DIR / "build").exists() else WORKSPACE_DIR / "esp_receiver" / "build"

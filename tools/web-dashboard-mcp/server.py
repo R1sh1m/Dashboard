@@ -10,8 +10,8 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any
 
-from mcp.server.fastmcp import FastMCP  # type: ignore
-mcp = FastMCP("web-dashboard-mcp")
+from mcp.server.mcpserver import MCPServer, Context
+mcp = MCPServer("web-dashboard-mcp")
 
 WORKSPACE_DIR = Path(__file__).resolve().parents[2]
 

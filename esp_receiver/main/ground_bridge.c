@@ -229,6 +229,11 @@ static void shadow_update(uint8_t type, const uint8_t *pl, uint8_t len, int8_t r
             if (len >= sizeof(pl_telem_t)) {
                 memcpy(&shadow.telem, pl, sizeof(pl_telem_t));
                 shadow.telem_t = now;
+                /* Also update environmental shadow from telemetry summary */
+                shadow.env.temp_c100 = shadow.telem.temp_c100;
+                shadow.env.hum_c100 = shadow.telem.hum_c100;
+                shadow.env.press_dhpa = shadow.telem.press_dhpa;
+                shadow.env_t = now;
             }
             break;
     }
@@ -260,7 +265,7 @@ static void emit_json(void)
     
     double temp_c = shadow.env.temp_c100 / 100.0;
     double humidity = shadow.env.hum_c100 / 100.0;
-    double pressure_hpa = shadow.env.press_dhpa / 100.0;
+    double pressure_hpa = shadow.env.press_dhpa / 10.0;
     double gas_kohm = shadow.env.gas_ohm / 1000.0;
     
     double voltage_v = shadow.power.est_mv / 1000.0;
@@ -272,7 +277,7 @@ static void emit_json(void)
         "{"
         "\"seq\":%u,"
         "\"timestamp\":%u,"
-        "\"bot_status\":{\"state\":\"EXPLORING\",\"uptime_sec\":%u,\"mode\":\"AUTONOMOUS\",\"loop_hz\":10.0},"
+        "\"bot_status\":{\"state\":\"STANDBY\",\"uptime_sec\":%u,\"mode\":\"AUTONOMOUS\",\"loop_hz\":10.0},"
         "\"gps\":{\"lat\":%.7f,\"lng\":%.7f,\"alt_m\":%.2f,\"fix\":%u,\"sats\":%u,\"speed_mps\":%.2f,\"hdop\":%.1f,\"heading_deg\":%.1f,\"valid\":%s},"
         "\"env\":{\"temp_c\":%.1f,\"humidity_pct\":%.1f,\"pressure_hpa\":%.1f,\"gas_resistance_kohm\":%.2f,\"iaq\":%u,\"anomaly_flag\":false},"
         "\"radar\":{\"human_detected\":%s,\"target_state\":\"%s\",\"distance_cm\":%.0f,\"energy\":%u},"
@@ -287,9 +292,9 @@ static void emit_json(void)
         shadow.gps.fix, shadow.gps.sats, speed_mps, hdop, heading_deg,
         (shadow.gps.fix >= 2) ? "true" : "false",
         temp_c, humidity, pressure_hpa, gas_kohm,
-        (unsigned int)shadow.env.iaq,
+        (unsigned int)(shadow.env.iaq / 10),
         shadow.radar.human ? "true" : "false",
-        shadow.radar.target_state == 0 ? "NO_TARGET" : (shadow.radar.target_state == 1 ? "MOVING" : "STATIONARY"),
+        shadow.radar.target_state == 0 ? "NO_TARGET" : (shadow.radar.target_state == 1 ? "MOVING" : (shadow.radar.target_state == 2 ? "STATIONARY" : "COMBINED")),
         radar_dist_cm, shadow.radar.mov_energy,
         voltage_v, current_a, (unsigned int)shadow.power.est_soc,
         voltage_v / 3.0, voltage_v / 3.0, voltage_v / 3.0,
@@ -311,9 +316,9 @@ static void emit_json(void)
             ESP_LOGD(TAG, "CDC not connected, dropping JSON frame (%d bytes)", snprintf_ret);
         }
 #else
-        /* Write to UART0 (GPIO1 TX / GPIO3 RX, 115200 baud) for an external
-         * USB-UART bridge (CP210x / CH340 / FTDI). */
-        uart_write_bytes(UART_NUM_0, buf, (size_t)snprintf_ret);
+        /* Write to UART0 (stdout, 115200 baud) for external USB-UART bridge */
+        fwrite(buf, 1, (size_t)snprintf_ret, stdout);
+        fflush(stdout);
         ESP_LOGD(TAG, "JSON emitted over UART0: %d bytes", snprintf_ret);
 #endif
     }
@@ -347,18 +352,8 @@ void ground_bridge_init(void)
         }
     }
 #else
-    /* Configure UART0 for USB-CDC output via external bridge (115200 baud) */
-    uart_config_t uart_cfg = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT
-    };
-    uart_param_config(UART_NUM_0, &uart_cfg);
-    uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
-    ESP_LOGI(TAG, "Ground bridge ready (UART0 @ 115200)");
+    /* UART0 is already configured by ESP-IDF console at 115200 baud */
+    ESP_LOGI(TAG, "Ground bridge ready (UART0 stdout @ 115200)");
 #endif
 }
 
@@ -421,3 +416,8 @@ void ground_bridge_process_frame(const uint8_t *buf, uint8_t len, int8_t rssi, i
      * the connectivity indicators (signal bars, seq, last-contact) live. */
     emit_json();
 }
+
+
+
+
+

@@ -1,12 +1,19 @@
 #include "lora_radio.h"
 #include "main.h"
 #include "sx126x_hal.h"
+#include <stdio.h>
 #include <stdbool.h>
 #include <stddef.h>
 
 #define CTX NULL
 #define RX_CONTINUOUS 0xFFFFFFu
-#define CHK(x) do { if ((x) != SX126X_STATUS_OK) return -1; } while (0)
+#define CHK(x) do { \
+    sx126x_status_t _st = (x); \
+    if (_st != SX126X_STATUS_OK) { \
+        printf("CHK fail line %d: status=%d\r\n", __LINE__, (int)_st); \
+        return -1; \
+    } \
+} while (0)
 
 static volatile uint8_t dio1_flag;
 
@@ -45,25 +52,39 @@ void radio_dio1_isr(void) { dio1_flag = 1; }
 
 int radio_init(void)
 {
+    printf("radio_init: 1 reset\r\n");
     sx126x_hal_reset(CTX);
+    printf("radio_init: 2 wakeup\r\n");
     sx126x_hal_wakeup(CTX);
+    printf("radio_init: 3 standby\r\n");
     CHK(sx126x_set_standby(CTX, SX126X_STANDBY_CFG_RC));
 #if LORA_USE_DCDC
+    printf("radio_init: 4 dcdc\r\n");
     CHK(sx126x_set_reg_mode(CTX, SX126X_REG_MODE_DCDC));
 #endif
 #if LORA_USE_TCXO
+    printf("radio_init: 5 tcxo\r\n");
     CHK(sx126x_set_dio3_as_tcxo_ctrl(CTX, SX126X_TCXO_CTRL_1_8V, 320)); /* 320 * 15.625 us = 5 ms */
     CHK(sx126x_cal(CTX, SX126X_CAL_ALL));
+    HAL_Delay(10);
+    CHK(sx126x_set_standby(CTX, SX126X_STANDBY_CFG_XOSC));
+    HAL_Delay(5);
+    CHK(sx126x_clear_device_errors(CTX));
 #endif
 #if LORA_USE_DIO2_RFSW
+    printf("radio_init: 6 rfsw\r\n");
     CHK(sx126x_set_dio2_as_rf_sw_ctrl(CTX, true));
 #endif
+    printf("radio_init: 7 pkt_type\r\n");
     CHK(sx126x_set_pkt_type(CTX, SX126X_PKT_TYPE_LORA));
     /* image calibration for the 863-870 MHz band (SX1262 datasheet 9.2.1) */
+    printf("radio_init: 8 cal_img\r\n");
     CHK(sx126x_cal_img(CTX, 0xD7, 0xDB));
+    printf("radio_init: 9 freq\r\n");
     CHK(sx126x_set_rf_freq(CTX, LORA_FREQ_HZ));
     sx126x_pa_cfg_params_t pa = { .pa_duty_cycle = PA_DUTY, .hp_max = PA_HPMAX,
                                   .device_sel = 0x00, .pa_lut = 0x01 };
+    printf("radio_init: 10 pa\r\n");
     CHK(sx126x_set_pa_cfg(CTX, &pa));
     CHK(sx126x_set_tx_params(CTX, LORA_TX_DBM, SX126X_RAMP_200_US));
     CHK(sx126x_set_buffer_base_address(CTX, 0, 0));
@@ -76,6 +97,12 @@ int radio_init(void)
     CHK(sx126x_set_dio_irq_params(CTX, m, m, 0, 0));
     CHK(sx126x_clear_irq_status(CTX, SX126X_IRQ_ALL));
     dio1_flag = 0;
+
+    sx126x_errors_mask_t err = 0;
+    sx126x_get_device_errors(CTX, &err);
+    sx126x_chip_status_t stat;
+    sx126x_get_status(CTX, &stat);
+    printf("SX1262 init: mode=%d, cmd=%d, err=0x%04x\r\n", stat.chip_mode, stat.cmd_status, (unsigned)err);
     return 0;
 }
 
@@ -87,6 +114,7 @@ uint32_t radio_toa_ms(uint8_t len)
 
 int radio_send(const uint8_t *buf, uint8_t len)
 {
+    printf("[STM32 TX] radio_send len=%d\r\n", (int)len);
     CHK(sx126x_set_standby(CTX, SX126X_STANDBY_CFG_RC));
     ant(1);
     pkt.pld_len_in_bytes = len;
@@ -110,13 +138,49 @@ void radio_start_rx(void)
 
 radio_evt_t radio_poll(radio_rx_t *rx)
 {
-    if (!dio1_flag) return RADIO_EVT_NONE;
-    dio1_flag = 0;
+    static uint32_t last_poll_ms = 0;
+    uint32_t now = HAL_GetTick();
+    int should_poll = 0;
+
+    if (dio1_flag || HAL_GPIO_ReadPin(LORA_DIO1_GPIO_Port, LORA_DIO1_Pin) == GPIO_PIN_SET) {
+        dio1_flag = 0;
+        should_poll = 1;
+    } else if (now - last_poll_ms >= 50) {
+        /* Fallback poll every 50ms via SPI if DIO1 pin is unasserted/unwired */
+        last_poll_ms = now;
+        should_poll = 1;
+    }
+
+    if (!should_poll) return RADIO_EVT_NONE;
+
     sx126x_irq_mask_t irq = 0;
-    if (sx126x_get_irq_status(CTX, &irq) != SX126X_STATUS_OK) return RADIO_EVT_ERR;
+    sx126x_status_t st = sx126x_get_irq_status(CTX, &irq);
+    if (st != SX126X_STATUS_OK) {
+        printf("[STM32 POLL ERR] status=%d\r\n", (int)st);
+        return RADIO_EVT_ERR;
+    }
+
+    static uint32_t last_dbg_ms = 0;
+    if (now - last_dbg_ms >= 1000) {
+        last_dbg_ms = now;
+        sx126x_chip_status_t stat;
+        sx126x_get_status(CTX, &stat);
+        sx126x_errors_mask_t err = 0;
+        sx126x_get_device_errors(CTX, &err);
+        printf("[STM32 RADIO] mode=%d, cmd=%d, irq=0x%04x, err=0x%04x\r\n",
+               stat.chip_mode, stat.cmd_status, (unsigned)irq, (unsigned)err);
+    }
+
+    if (irq == 0) return RADIO_EVT_NONE;
+
+    printf("[STM32 IRQ] detected 0x%04x\r\n", (unsigned)irq);
     sx126x_clear_irq_status(CTX, irq);
 
-    if (irq & SX126X_IRQ_TX_DONE) { radio_start_rx(); return RADIO_EVT_TX_DONE; }
+    if (irq & SX126X_IRQ_TX_DONE) {
+        printf("[STM32 IRQ] TX_DONE (0x%04x)\r\n", (unsigned)irq);
+        radio_start_rx();
+        return RADIO_EVT_TX_DONE;
+    }
     if (irq & SX126X_IRQ_RX_DONE) {
         if (irq & (SX126X_IRQ_CRC_ERROR | SX126X_IRQ_HEADER_ERROR)) return RADIO_EVT_ERR;
         sx126x_rx_buffer_status_t bs;
@@ -130,6 +194,10 @@ radio_evt_t radio_poll(radio_rx_t *rx)
         }
         return RADIO_EVT_RX_DONE;
     }
-    if (irq & SX126X_IRQ_TIMEOUT) { radio_start_rx(); return RADIO_EVT_TIMEOUT; }
+    if (irq & SX126X_IRQ_TIMEOUT) {
+        printf("[STM32 IRQ] TIMEOUT (0x%04x)\r\n", (unsigned)irq);
+        radio_start_rx();
+        return RADIO_EVT_TIMEOUT;
+    }
     return RADIO_EVT_ERR;
 }

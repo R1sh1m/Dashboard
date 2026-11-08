@@ -19,8 +19,8 @@ try:
 except ImportError:
     HAS_PYMUPDF4LLM = False
 
-from mcp.server.fastmcp import FastMCP  # type: ignore
-mcp = FastMCP("datasheet-mcp")
+from mcp.server.mcpserver import MCPServer, Context
+mcp = MCPServer("datasheet-mcp")
 
 # Known datasheet directories
 REPO_ROOT = Path(__file__).resolve().parents[2]

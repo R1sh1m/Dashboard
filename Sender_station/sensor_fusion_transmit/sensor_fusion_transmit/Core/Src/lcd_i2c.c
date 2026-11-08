@@ -3,6 +3,7 @@
  */
 #include "lcd_i2c.h"
 #include "main.h"
+#include "app_config.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -51,15 +52,15 @@ static void send(uint8_t value, uint8_t mode)
     write4bits((uint8_t)(lownib  | mode));
 }
 
-/* ── Try initializing on a specific 7-bit address ───────────────────────── */
-static int try_init_addr(uint8_t addr7)
+/* ── Try initializing on a specific 7-bit address on a given bus ────────── */
+static int try_init_addr(I2C_HandleTypeDef *hi2c, uint8_t addr7)
 {
     uint8_t a8 = (uint8_t)(addr7 << 1);
     uint8_t test_byte = BL;
 
     /* 1. Try sending 1 byte (backlight ON) */
-    HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(&hi2c1, a8, &test_byte, 1, 30);
-    uint32_t err = hi2c1.ErrorCode;
+    HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(hi2c, a8, &test_byte, 1, 30);
+    uint32_t err = hi2c->ErrorCode;
 
     printf("  Probe 0x%02X: Transmit=%d (err=0x%lX)\r\n", addr7, st, err);
 
@@ -69,7 +70,7 @@ static int try_init_addr(uint8_t addr7)
 
     printf("  >>> SUCCESS! PCF8574 ACked at 0x%02X! <<<\r\n", addr7);
     lcd_addr8 = a8;
-    lcd_hi2c  = &hi2c1;
+    lcd_hi2c  = hi2c;
     ok        = 1;
     lcd_bl    = BL;
 
@@ -119,31 +120,73 @@ static int try_init_addr(uint8_t addr7)
 int lcd_init(void)
 {
     ok = 0;
-
-    printf("\r\n=== I2C1 Full Bus Scan (all 127 addresses) ===\r\n");
     int found_any = 0;
 
-    for (uint8_t a = 1; a < 127; a++) {
-        uint8_t a8 = (uint8_t)(a << 1);
-        uint8_t test_b = BL;
-        HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(&hi2c1, a8, &test_b, 1, 20);
-        if (st == HAL_OK) {
-            printf("  >>> ACK AT ADDRESS 0x%02X! ", a);
-            if (a == 0x76 || a == 0x77) {
-                printf("[BME688]\r\n");
-            } else {
-                printf("[POSSIBLE LCD!]\r\n");
-                if (try_init_addr(a)) {
-                    printf("=== LCD INITIALIZED AT 0x%02X! ===\r\n", a);
-                    return 0;
-                }
+    /* I2C buses to scan in priority order. I2C1 FIRST per hardware doc. */
+    I2C_HandleTypeDef *buses[] = { &hi2c1, &hi2c2, &hi2c3 };
+    const char *bus_names[] = { "I2C1 (PB8/PB9)", "I2C2 (PF0/PF1)", "I2C3 (PC9/PA8)" };
+    int num_buses = (int)(sizeof(buses) / sizeof(buses[0]));
+
+    /* 1. Probe the configured LCD address (per app_config.h) then standard 0x27
+     *    on each bus, in priority order. Stops at first successful init. */
+    for (int b = 0; b < num_buses; b++) {
+        I2C_HandleTypeDef *hi2c = buses[b];
+        const char *bus_name = bus_names[b];
+
+        printf("\r\n=== Probing LCD at configured address 0x%02X (%s) ===\r\n", LCD_I2C_ADDR, bus_name);
+        if (try_init_addr(hi2c, LCD_I2C_ADDR)) {
+            printf("=== LCD INITIALIZED AT 0x%02X on %s! ===\r\n", LCD_I2C_ADDR, bus_name);
+            return 0;
+        }
+        if (0x27u != LCD_I2C_ADDR) {
+            printf("\r\n=== Probing LCD at standard address 0x27 (%s) ===\r\n", bus_name);
+            if (try_init_addr(hi2c, 0x27u)) {
+                printf("=== LCD INITIALIZED AT 0x27 on %s! ===\r\n", bus_name);
+                return 0;
             }
-            found_any = 1;
+        }
+    }
+
+    /* 2. Full bus scan for remaining devices on all buses (BME688 at 0x76/0x77,
+     *    plus any other LCD in 0x20-0x3F). Skip already-probed addrs on I2C1. */
+    for (int b = 0; b < num_buses; b++) {
+        I2C_HandleTypeDef *hi2c = buses[b];
+        const char *bus_name = bus_names[b];
+
+        printf("\r\n=== %s Full Bus Scan (all 127 addresses) ===\r\n", bus_name);
+        for (uint8_t a = 1; a < 127; a++) {
+            /* Skip already-probed addresses on I2C1 only */
+            if (b == 0 && (a == LCD_I2C_ADDR || a == 0x27u)) continue;
+            uint8_t a8 = (uint8_t)(a << 1);
+            uint8_t test_b = BL;
+            HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(hi2c, a8, &test_b, 1, 20);
+            if (st == HAL_OK) {
+                printf("  >>> ACK AT ADDRESS 0x%02X! ", a);
+                if (a == 0x76 || a == 0x77) {
+                    printf("[BME688]\r\n");
+                } else if (a >= 0x20 && a <= 0x3F) {
+                    printf("[POSSIBLE LCD!]\r\n");
+                    if (try_init_addr(hi2c, a)) {
+                        printf("=== LCD INITIALIZED AT 0x%02X on %s! ===\r\n", a, bus_name);
+                        return 0;
+                    }
+                } else {
+                    printf("[device]\r\n");
+                }
+                found_any = 1;
+            }
         }
     }
 
     if (!found_any) {
-        printf("  (No devices ACKed on I2C1)\r\n");
+        printf("  (No devices ACKed on any bus)\r\n");
+    }
+
+    /* 3. Single-line diagnostic when no LCD was found in 0x20-0x3F.
+     *    Does NOT block the main loop: lcd_init returns -1 and app_loop
+     *    retries lcd_init every 1500 ms while g_lcd_ok == 0. */
+    if (!ok) {
+        printf("[LCD] Scanner: No device detected at 0x20-0x27 or 0x38-0x3F. Continuing headless.\r\n");
     }
 
     return -1;

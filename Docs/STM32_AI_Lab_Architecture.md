@@ -2,7 +2,7 @@
 
 **Target:** NUCLEO-F722ZE (STM32F722ZET6, Cortex-M7, 216 MHz)  
 **Radio:** SX1262 LoRa (SPI1)  
-**Ground Receiver:** ESP32 + SX1261 (USB-CDC to React dashboard)  
+**Ground Receiver:** ESP32 + SX1262 (USB-CDC to React dashboard)  
 **Inter-board link:** USART6 (PG9 RX, PG14 TX, 115200 baud)
 
 ---
@@ -12,7 +12,7 @@
 ```
 STM32 Nucleo (Robot)                          ESP32 (Ground Receiver)
 ┌─────────────────────────────────────┐       ┌─────────────────────────────┐
-│  SX1262 LoRa (SPI1)                 │       │  SX1261 LoRa (SPI)          │
+│  SX1262 LoRa (SPI1)                 │       │  SX1262 LoRa (SPI)          │
 │  PA5 SCK, PA6 MISO, PA7 MOSI        │◄─────►│  GPIO18 SCK, GPIO23 MOSI    │
 │  PA4 NSS, PE11 RESET, PF13 BUSY     │  RF   │  GPIO19 MISO, GPIO5 NSS     │
 │  PE9 DIO1, PE13 RXEN, PF14 TXEN     │       │  GPIO13 BUSY, GPIO4 DIO1    │
@@ -113,7 +113,7 @@ See `Docs/Sensor_Calibration.md` for calibration procedures and offset applicati
 |------|---------|
 | `Docs/STM32_Sender.md` | STM32 wiring, build, flash guide |
 | `Docs/ESP32_Receiver.md` | ESP32 wiring, build, flash guide |
-| `Docs/ESP32_LoRa_Wiring.md` | ESP32 → SX1261 pinout |
+| `Docs/ESP32_LoRa_Wiring.md` | ESP32 → SX1262 pinout |
 | `Docs/Sensor_Calibration.md` | Sensor calibration procedures |
 | `Docs/EndToEnd_Test_Procedure.md` | End-to-end test checklist |
 | `Scripts/build_stm32.ps1` | PowerShell build script |

@@ -19,6 +19,10 @@
  */
 #define LORA_FREQ_HZ          865402500UL
 
+/* SX1261/SX1262 crystal frequency is standard 32 MHz per Semtech spec.
+ * PLL steps = (F_RF * 2^25) / F_XOSC. (865402500 * 33554432) / 32000000 = 0x36165800. */
+#define LORA_XOSC_FREQ_HZ     32000000UL
+
 /* ============================================================================
  * LoRa Modulation Parameters
  * ============================================================================
@@ -85,9 +89,12 @@
  * ============================================================================
  * Set to 1 if using external TXEN/RXEN pins for antenna switch
  * Set to 0 if using DIO2 for RF switch (SX1262 internal)
+ * 
+ * Note: Many SX1262 modules use DIO2 for internal RF switching.
+ * If using DIO2_RFSW, set LORA_USE_RXTX_PINS=0 and LORA_USE_DIO2_RFSW=1.
  */
-#define LORA_USE_RXTX_PINS    1
-#define LORA_USE_DIO2_RFSW    0
+#define LORA_USE_RXTX_PINS    0
+#define LORA_USE_DIO2_RFSW    1
 
 /* ============================================================================
  * TCXO (Temperature Compensated Crystal Oscillator)

@@ -1,8 +1,8 @@
-# ESP32 Receiver — SX1261 LoRa Module Wiring
+# ESP32 Receiver — SX1262 LoRa Module Wiring
 
 ## Physical Connections
 
-| ESP32 GPIO | SX1261 Pin | Function | Connected? |
+| ESP32 GPIO | SX1262 Pin | Function | Connected? |
 |------------|------------|----------|------------|
 | GPIO5 | NSS / CS | Chip Select | ✅ |
 | GPIO18 | SCK / CLK | SPI Clock | ✅ |
@@ -11,15 +11,16 @@
 | GPIO14 | RESET | Radio Reset | ✅ |
 | **GPIO13** | **BUSY** | Radio Busy | ✅ |
 | **GPIO4** | **DIO1** | Radio Interrupt | ✅ |
-| GPIO25 | TXEN | Antenna Switch TX Enable | ❌ Not connected |
-| GPIO33 | RXEN | Antenna Switch RX Enable | ❌ Not connected |
+| GPIO25 | TXEN | Antenna Switch TX Enable | Optional (Driven LOW by firmware) |
+| GPIO33 | RXEN | Antenna Switch RX Enable | Connect to 3.3V or GPIO33 (HIGH) |
 
 ## Notes
 
-- **DIO2 / TXEM / RXEM**: Not connected to anything. The firmware uses `LORA_USE_RXTX_PINS=1` but TXEN/RXEN GPIOs are configured as outputs and driven low (RX mode) — they do not affect operation when unconnected.
-- **BUSY** was originally defined as GPIO27 in the firmware but the physical wiring uses GPIO13. The firmware was updated to match (`PIN_BUSY GPIO_NUM_13`).
-- **DIO1** was originally defined as GPIO26 in the firmware but the physical wiring uses GPIO4. The firmware was updated to match (`PIN_DIO1 GPIO_NUM_4`).
-- SPI bus: SPI2_HOST at 2 MHz, mode 0, CS kept active between command and data phases.
+- **Oscillator (TCXO)**: The module uses a 32 MHz TCXO powered via DIO3. The firmware automatically enables 1.8V on DIO3 and calibrates the RF/PLL blocks.
+- **RF Antenna Switch (RXEN/TXEN)**: The breakout module separates the RF switch control onto dedicated `RXEN` and `TXEN` header pins. For continuous ground reception, `RXEN` must be connected to 3.3V (or GPIO33, which firmware drives HIGH) to connect the antenna to the SX1262 RF input.
+- **BUSY**: Connected to GPIO13 (`PIN_BUSY GPIO_NUM_13`).
+- **DIO1**: Connected to GPIO4 (`PIN_DIO1 GPIO_NUM_4`).
+- SPI bus: SPI2_HOST at 2 MHz, mode 0. CS on GPIO5.
 - Console UART: GPIO1 (TX) / GPIO3 (RX) at 115200 baud.
 
 ## Firmware Pin Definitions
