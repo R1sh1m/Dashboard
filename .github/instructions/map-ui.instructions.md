@@ -1,11 +1,7 @@
 ---
 name: Artemis map UI
 description: "Use when modifying Leaflet map behavior, rover tracking, map controls, POI cards, location handling, or map-related dashboard components."
-applyTo:
-  - "src/components/MapView.tsx"
-  - "src/components/PoiModal.tsx"
-  - "src/components/SensorSheet.tsx"
-  - "src/services/**/*.{ts,tsx}"
+applyTo: "{src/components/MapView.tsx,src/components/PoiModal.tsx,src/components/SensorSheet.tsx,src/services/**/*.{ts,tsx}}"
 ---
 
 # Map and Location Guidance

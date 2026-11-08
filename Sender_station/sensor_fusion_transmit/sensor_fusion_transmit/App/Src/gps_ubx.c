@@ -15,6 +15,8 @@ size_t ubx_build(uint8_t *o, uint8_t cls, uint8_t id, const uint8_t *pl, uint16_
     return k;
 }
 
+static uint8_t ack_cls, ack_id; static int ack_got;
+
 static int handle(ubx_parser_t *p, gps_data_t *g, uint32_t now)
 {
     if (p->cls == 0x01 && p->id == 0x07 && p->len == 92) {          /* NAV-PVT */
@@ -35,6 +37,9 @@ static int handle(ubx_parser_t *p, gps_data_t *g, uint32_t now)
     if (p->cls == 0x01 && p->id == 0x04 && p->len == 18) {          /* NAV-DOP */
         uint16_t h = u2(p->buf + 12) / 10;                            /* 0.01 -> 0.1 */
         g->hdop_x10 = (uint8_t)(h > 255 ? 255 : h);
+    }
+    if (p->cls == 0x05 && p->id == 0x01 && p->len == 2) {           /* ACK-ACK / ACK-NAK */
+        ack_cls = p->buf[0]; ack_id = p->buf[1]; ack_got = 1;
     }
     return 0;
 }
@@ -57,3 +62,6 @@ int ubx_feed(ubx_parser_t *p, uint8_t b, gps_data_t *g, uint32_t now)
     }
     return 0;
 }
+
+void ubx_ack_clear(void){ ack_got = 0; ack_cls = 0; ack_id = 0; }
+int  ubx_ack_seen(uint8_t cls, uint8_t id){ return ack_got && ack_cls == cls && ack_id == id; }

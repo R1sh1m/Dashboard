@@ -40,12 +40,12 @@ const ROBOT_PILL: Record<string, { bg: string; border: string; text: string; ani
   CALIBRATING: { bg: 'rgba(255, 214, 10, 0.16)', border: '1px solid rgba(255, 214, 10, 0.4)', text: '#ffd60a' },
 };
 
-// Status pill colors for LINK state (translucent glassmorphism with high contrast text)
+// Status pill colors for LINK state (high contrast, crisp visibility)
 const LINK_PILL: Record<SerialStatus, { bg: string; border: string; text: string; dot: string; animate?: string }> = {
-  DISCONNECTED: { bg: 'rgba(161, 161, 170, 0.16)', border: '1px solid rgba(161, 161, 170, 0.35)', text: '#f4f4f5', dot: 'bg-zinc-400' },
-  CONNECTING: { bg: 'rgba(255, 214, 10, 0.18)', border: '1px solid rgba(255, 214, 10, 0.5)', text: '#ffd60a', dot: 'bg-yellow-400', animate: 'animate-pulse' },
-  CONNECTED: { bg: 'rgba(48, 209, 88, 0.18)', border: '1px solid rgba(48, 209, 88, 0.5)', text: '#30d158', dot: 'bg-emerald-400', animate: 'animate-pulse' },
-  ERROR: { bg: 'rgba(255, 69, 58, 0.22)', border: '1px solid rgba(255, 69, 58, 0.65)', text: '#ffffff', dot: 'bg-red-500', animate: 'animate-pulse' },
+  DISCONNECTED: { bg: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.22)', text: '#f4f4f5', dot: 'bg-zinc-400' },
+  CONNECTING: { bg: 'rgba(255, 214, 10, 0.22)', border: '1px solid rgba(255, 214, 10, 0.65)', text: '#ffd60a', dot: 'bg-yellow-400', animate: 'animate-pulse' },
+  CONNECTED: { bg: 'rgba(48, 209, 88, 0.22)', border: '1px solid rgba(48, 209, 88, 0.65)', text: '#30d158', dot: 'bg-emerald-400', animate: 'animate-pulse' },
+  ERROR: { bg: 'rgba(255, 69, 58, 0.38)', border: '1.5px solid rgba(255, 69, 58, 0.90)', text: '#ffffff', dot: 'bg-white', animate: 'animate-pulse' },
 };
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -145,7 +145,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="sidebar-footer">
         <div className="flex flex-col items-end gap-2">
           <button
-            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative gap-2 backdrop-blur-md transition-all hover:brightness-110 active:scale-95 h-10 min-w-[112px]`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative gap-2 transition-all hover:brightness-110 active:scale-95 h-10 min-w-[112px]`}
             onClick={() => { setActiveNav('estop'); onTriggerEStop(); }}
             aria-label="Emergency stop"
             style={{
@@ -158,7 +158,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <span>E-STOP</span>
           </button>
           <span
-            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative backdrop-blur-md h-10 min-w-[112px]`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative h-10 min-w-[112px]`}
             style={{
               backgroundColor: robotStyle.bg,
               border: robotStyle.border,
@@ -170,7 +170,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </span>
           <button
             type="button"
-            className="pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative cursor-pointer backdrop-blur-md transition-all hover:brightness-125 active:scale-95 shadow-sm h-10 min-w-[112px]"
+            className="pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative cursor-pointer transition-all hover:brightness-125 active:scale-95 shadow-sm h-10 min-w-[112px]"
             onClick={serialStatus === 'CONNECTED' ? onDisconnectSerial : onConnectSerial}
             aria-label={serialStatus === 'CONNECTED' ? 'Disconnect serial link' : 'Connect serial link'}
             title={
@@ -184,6 +184,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               backgroundColor: linkStyle.bg,
               border: linkStyle.border,
               color: linkStyle.text,
+              fontWeight: 700,
+              boxShadow: serialStatus === 'ERROR' ? '0 2px 10px rgba(255, 69, 58, 0.45)' : undefined,
             }}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${linkStyle.dot} ${linkStyle.animate || ''} absolute left-3`} />

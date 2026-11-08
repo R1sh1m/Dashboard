@@ -54,7 +54,7 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart3;
-UART_HandleTypeDef huart4;   /* GPS (App/Src/app.c references this) */
+UART_HandleTypeDef huart4;   /* not used by GPS; GPS is on huart2 (USART2 PD5/PD6) */
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 

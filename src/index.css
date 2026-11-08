@@ -209,7 +209,7 @@ body {
   display: grid;
   gap: 5px;
   min-width: 154px;
-  margin: 0 22px 132px 0 !important;
+  margin: 0 22px 24px 0 !important;
   padding: 8px 10px 9px;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 10px;
@@ -268,7 +268,7 @@ body {
 @media (max-width: 760px) {
   .artemis-scale-control {
     margin-right: 12px !important;
-    margin-bottom: 128px !important;
+    margin-bottom: 20px !important;
     transform: scale(0.94);
     transform-origin: bottom right;
   }
@@ -567,7 +567,7 @@ body {
 .empty-search span { font-size: 11px; }
 .map-controls, .zoom-controls { position: absolute; right: 22px; flex-direction: column; gap: 8px; pointer-events: auto; }
 .map-controls { top: 90px; }
-.zoom-controls { bottom: 24px; }
+.zoom-controls { bottom: 78px; }
 .map-control { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.15); border-radius: 50%; color: #e6e6e9; background: rgba(25,26,29,.72); box-shadow: 0 5px 18px rgba(0,0,0,.22); backdrop-filter: blur(16px); cursor: pointer; }
 .map-control.is-active { color: #fff; border-color: rgba(10,132,255,.7); background: rgba(10,132,255,.28); }
 .maps-shell.poi-mode .leaflet-container { cursor: pointer; }
@@ -587,7 +587,7 @@ body {
   .brand-lockup span, .maps-nav, .top-status > span:not(.status-dot) { display: none; }
   .explore-sheet { top: 70px; left: 10px; width: calc(100vw - 20px); max-height: calc(100vh - 84px); }
   .map-controls { right: 12px; bottom: 136px; top: auto; }
-  .zoom-controls { right: 12px; bottom: 20px; }
+  .zoom-controls { right: 12px; bottom: 72px; }
   .coordinate-pill { left: 12px; bottom: 20px; max-width: calc(100vw - 170px); white-space: nowrap; overflow: hidden; }
   .telemetry-glance { display: none; }
 }

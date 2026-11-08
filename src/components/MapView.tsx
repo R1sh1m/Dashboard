@@ -135,8 +135,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const warningMarkerRef = useRef<L.Marker | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
 
-  const initialLatRef = useRef(gps?.lat ?? 12.974842);
-  const initialLngRef = useRef(gps?.lng ?? 79.165479);
+  const initialLatRef = useRef((gps && gps.lat !== 0) ? gps.lat : 12.974842);
+  const initialLngRef = useRef((gps && gps.lng !== 0) ? gps.lng : 79.165479);
 
   // The map container fills the whole viewport, but the persistent left
   // sidebar and the right sensor sheet cover parts of it. Leaflet centers on
@@ -416,10 +416,23 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
-    const fallbackLat = initialLatRef.current;
-    const fallbackLng = initialLngRef.current;
-    const targetLat = lastKnownPosition?.lat ?? (gps && gps.lat !== 0 ? gps.lat : null) ?? homePosition?.lat ?? fallbackLat;
-    const targetLng = lastKnownPosition?.lng ?? (gps && gps.lng !== 0 ? gps.lng : null) ?? homePosition?.lng ?? fallbackLng;
+    if (gps && gps.lat !== 0 && gps.lng !== 0) {
+      initialLatRef.current = gps.lat;
+      initialLngRef.current = gps.lng;
+    }
+
+    const fallbackLat = (lastKnownPosition && lastKnownPosition.lat !== 0)
+      ? lastKnownPosition.lat
+      : (initialLatRef.current !== 0 ? initialLatRef.current : 12.974842);
+    const fallbackLng = (lastKnownPosition && lastKnownPosition.lng !== 0)
+      ? lastKnownPosition.lng
+      : (initialLngRef.current !== 0 ? initialLngRef.current : 79.165479);
+    const targetLat = (lastKnownPosition && lastKnownPosition.lat !== 0)
+      ? lastKnownPosition.lat
+      : (gps && gps.lat !== 0 ? gps.lat : null) ?? (homePosition?.lat && homePosition.lat !== 0 ? homePosition.lat : null) ?? fallbackLat;
+    const targetLng = (lastKnownPosition && lastKnownPosition.lng !== 0)
+      ? lastKnownPosition.lng
+      : (gps && gps.lng !== 0 ? gps.lng : null) ?? (homePosition?.lng && homePosition.lng !== 0 ? homePosition.lng : null) ?? fallbackLng;
 
     const now = Date.now();
     const isSignalLost = lastPacketTime !== null && now - lastPacketTime > 4000;
@@ -593,10 +606,23 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
   const recenterLkl = () => {
     if (!mapInstanceRef.current) return;
-    const fallbackLat = initialLatRef.current;
-    const fallbackLng = initialLngRef.current;
-    const targetLat = lastKnownPosition?.lat ?? (gps && gps.lat !== 0 ? gps.lat : null) ?? homePosition?.lat ?? fallbackLat;
-    const targetLng = lastKnownPosition?.lng ?? (gps && gps.lng !== 0 ? gps.lng : null) ?? homePosition?.lng ?? fallbackLng;
+    if (gps && gps.lat !== 0 && gps.lng !== 0) {
+      initialLatRef.current = gps.lat;
+      initialLngRef.current = gps.lng;
+    }
+
+    const fallbackLat = (lastKnownPosition && lastKnownPosition.lat !== 0)
+      ? lastKnownPosition.lat
+      : (initialLatRef.current !== 0 ? initialLatRef.current : 12.974842);
+    const fallbackLng = (lastKnownPosition && lastKnownPosition.lng !== 0)
+      ? lastKnownPosition.lng
+      : (initialLngRef.current !== 0 ? initialLngRef.current : 79.165479);
+    const targetLat = (lastKnownPosition && lastKnownPosition.lat !== 0)
+      ? lastKnownPosition.lat
+      : (gps && gps.lat !== 0 ? gps.lat : null) ?? (homePosition?.lat && homePosition.lat !== 0 ? homePosition.lat : null) ?? fallbackLat;
+    const targetLng = (lastKnownPosition && lastKnownPosition.lng !== 0)
+      ? lastKnownPosition.lng
+      : (gps && gps.lng !== 0 ? gps.lng : null) ?? (homePosition?.lng && homePosition.lng !== 0 ? homePosition.lng : null) ?? fallbackLng;
     setViewVisible([targetLat, targetLng], 18, { animate: true });
     warningMarkerRef.current?.openPopup();
   };

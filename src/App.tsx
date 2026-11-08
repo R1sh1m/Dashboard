@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Layers, LocateFixed, Minus, MousePointer2, Navigation2, Plus, WifiOff } from 'lucide-react';
+import { AlertTriangle, Layers, LocateFixed, Minus, MousePointer2, Navigation2, Plus } from 'lucide-react';
 import { MapView, type MapViewHandle } from './components/MapView';
 import { LeftSidebar } from './components/LeftSidebar';
 import { PoiModal } from './components/PoiModal';
@@ -8,6 +8,26 @@ import type { GpsData, LogEntry, PointOfInterest, TelemetryPacket } from './type
 import { serialService, type SerialConnectionStatus } from './services/webSerial';
 import { poiDatabase } from './services/poiDatabase';
 import { MAP_TYPE_ORDER, type MapType } from './lib/mapLayers';
+
+// GPS move threshold in meters. Below this, the rover is treated as stationary (standby).
+const GPS_MOVE_THRESHOLD_M = 0.5;
+
+// Haversine distance between two lat/lng points in meters.
+const haversineDistanceM = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number => {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6_371_000; // Earth radius in meters
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+};
 
 export function App() {
   const [telemetry, setTelemetry] = useState<TelemetryPacket | null>(null);
@@ -37,13 +57,17 @@ export function App() {
     return stored === 'satellite' || stored === 'terrain' || stored === 'osm' ? stored : 'osm';
   });
   const [isLklExpanded, setIsLklExpanded] = useState(false);
-  const [lastKnownPosition, setLastKnownPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [lastKnownPosition, setLastKnownPosition] = useState<{ lat: number; lng: number } | null>({ lat: 12.974842, lng: 79.165479 });
   const [activeNav, setActiveNav] = useState<'home' | 'saved' | 'telemetry' | 'estop'>('home');
   const [poiCycleIdx, setPoiCycleIdx] = useState(0);
   const [mapControlMode, setMapControlMode] = useState<'sensor' | 'manual'>(() => (
     typeof window !== 'undefined' && localStorage.getItem('artemis-map-control-mode') === 'manual' ? 'manual' : 'sensor'
   ));
   const autoPoiCooldownRef = useRef({ human: 0, environment: 0 });
+  // Previous GPS position, touched only in GPS reception callbacks, used to
+  // derive STANDBY vs WALKING solely from GPS sensor data (position changing).
+  const prevGpsPos = useRef<{ lat: number; lng: number } | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
   const mapRef = useRef<MapViewHandle>(null);
 
   useEffect(() => {
@@ -76,6 +100,16 @@ export function App() {
     setLastPacketTime(Date.now());
     if (packet.gps.valid && packet.gps.lat !== 0 && packet.gps.lng !== 0) {
       setLastKnownPosition({ lat: packet.gps.lat, lng: packet.gps.lng });
+    }
+    // Update movement state based on GPS position change.
+    if (packet.gps.valid) {
+      const prev = prevGpsPos.current;
+      const moving = prev ? haversineDistanceM(prev.lat, prev.lng, packet.gps.lat, packet.gps.lng) > GPS_MOVE_THRESHOLD_M : false;
+      setIsMoving(moving);
+      prevGpsPos.current = { lat: packet.gps.lat, lng: packet.gps.lng };
+    } else {
+      prevGpsPos.current = null;
+      setIsMoving(false);
     }
     setHomePosition((current) => {
       if (!current && packet.gps.valid) {
@@ -134,6 +168,16 @@ export function App() {
       setLastKnownPosition({ lat: gps.lat, lng: gps.lng });
       setHomePosition((current) => current ?? { lat: gps.lat, lng: gps.lng });
     }
+    // Update movement state based on position change.
+    if (gps.valid) {
+      const prev = prevGpsPos.current;
+      const moving = prev ? haversineDistanceM(prev.lat, prev.lng, gps.lat, gps.lng) > GPS_MOVE_THRESHOLD_M : false;
+      setIsMoving(moving);
+      prevGpsPos.current = { lat: gps.lat, lng: gps.lng };
+    } else {
+      prevGpsPos.current = null;
+      setIsMoving(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -156,6 +200,9 @@ export function App() {
   const triggerEStop = async () => {
     addLog('ERR', 'CMD', 'EMERGENCY STOP (E-STOP) BROADCAST SENT TO ESP32');
     if (serialStatus === 'CONNECTED') await serialService.sendCommand('ESTOP');
+    // Sever the connection with the Ground ESP32 on e-stop.
+    await serialService.disconnect();
+    addLog('WARN', 'SERIAL', 'E-STOP: severed connection with Ground ESP32');
     setTelemetry((current) => current ? { ...current, bot_status: { ...current.bot_status, state: 'EMERGENCY_STOP' } } : current);
   };
   const handleSidebarEStop = () => {
@@ -190,7 +237,14 @@ export function App() {
     ? { lat: markedHome.lat, lng: markedHome.lng }
     : homePosition;
 
-  const botState = telemetry?.bot_status.state ?? 'STANDBY';
+  const reportedState = telemetry?.bot_status.state ?? 'STANDBY';
+  // STANDBY vs WALKING is determined solely by GPS sensor data; all other
+  // states (HOMING, EXPLORING, CALIBRATING, EMERGENCY_STOP) come from telemetry.
+  const gpsBasedState = isMoving ? 'WALKING' : 'STANDBY';
+  const botState =
+    reportedState === 'STANDBY' || reportedState === 'WALKING'
+      ? gpsBasedState
+      : reportedState;
   const isEStop = botState === 'EMERGENCY_STOP';
   const signalLost = lastPacketTime !== null && now - lastPacketTime > 4000;
   const gpsInvalid = !gpsData?.valid;
@@ -271,11 +325,7 @@ export function App() {
             aria-expanded={isLklExpanded}
             aria-label={isLklExpanded ? 'Collapse last known location' : 'Last known location'}
           >
-            {isLklExpanded ? (
-              <AlertTriangle className="lkl-icon" size={18} strokeWidth={2.5} aria-hidden="true" />
-            ) : (
-              <WifiOff className="lkl-icon" size={18} strokeWidth={2.5} aria-hidden="true" />
-            )}
+            <AlertTriangle className="lkl-icon" size={18} strokeWidth={2.5} aria-hidden="true" />
             <span className="lkl-label">
               Last known location
               {lastPacketTime ? ` · ${Math.round((now - lastPacketTime) / 1000)}s since contact` : ' · No signal'}

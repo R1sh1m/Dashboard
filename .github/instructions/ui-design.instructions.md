@@ -1,9 +1,7 @@
 ---
 name: Artemis UI design
 description: "Use when creating or modifying React dashboard components, CSS, controls, accessibility, responsive layouts, or visual styling."
-applyTo:
-  - "src/components/**/*.{ts,tsx}"
-  - "src/index.css"
+applyTo: "{src/components/**/*.{ts,tsx},src/index.css}"
 ---
 
 # Dashboard UI Guidance

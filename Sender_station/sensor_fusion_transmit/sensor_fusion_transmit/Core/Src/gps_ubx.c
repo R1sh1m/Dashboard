@@ -101,6 +101,23 @@ int ubx_cfg_prt_wait_ack(UART_HandleTypeDef *huart, uint32_t timeout_ms)
     return 0;
 }
 
+/* Generic UBX-ACK-ACK waiter: polls for an ACK-ACK confirming the given CFG
+ * class/id on the given UART. Returns 1 on ACK, 0 on timeout. */
+int ubx_cfg_wait_ack(UART_HandleTypeDef *huart, uint32_t timeout_ms,
+                     uint8_t cls, uint8_t id)
+{
+    ubx_ack_t ack; ubx_ack_reset(&ack);
+    uint32_t start = HAL_GetTick();
+    uint8_t b;
+    while ((int32_t)(HAL_GetTick() - start) < (int32_t)timeout_ms) {
+        if (HAL_UART_Receive(huart, &b, 1, 10) == HAL_OK) {
+            if (ubx_ack_feed(&ack, b, cls, id))
+                return 1;
+        }
+    }
+    return 0;
+}
+
 int ubx_feed(ubx_parser_t *p, uint8_t b, gps_data_t *g, uint32_t now)
 {
     switch (p->st) {

@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
-extern UART_HandleTypeDef huart4;   /* GPS   */
+extern UART_HandleTypeDef huart2;   /* GPS   */
 extern UART_HandleTypeDef huart5;   /* radar */
 
 /* ------------------------------------------------------------------ UART RX rings */
@@ -24,13 +24,13 @@ static int  rb_get(rb_t *r, uint8_t *c){ if (r->h == r->t) return 0; *c = r->b[r
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h)
 {
-    if (h->Instance == UART4) { rb_put(&gps_rb, gps_byte); HAL_UART_Receive_IT(h, &gps_byte, 1); }
+    if (h->Instance == USART2) { rb_put(&gps_rb, gps_byte); HAL_UART_Receive_IT(h, &gps_byte, 1); }
     else if (h->Instance == UART5)                     { rb_put(&ld_rb,  ld_byte);  HAL_UART_Receive_IT(h, &ld_byte, 1); }
 }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *h)
 {
     __HAL_UART_CLEAR_OREFLAG(h); __HAL_UART_CLEAR_FEFLAG(h); __HAL_UART_CLEAR_NEFLAG(h);
-    if (h->Instance == UART4) HAL_UART_Receive_IT(h, &gps_byte, 1);
+    if (h->Instance == USART2) HAL_UART_Receive_IT(h, &gps_byte, 1);
     if (h->Instance == UART5) HAL_UART_Receive_IT(h, &ld_byte, 1);
 }
 void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin == LORA_DIO1_Pin) radio_dio1_isr(); }
@@ -248,15 +248,36 @@ static void send_telemetry(uint32_t now)
 static void ubx_tx(uint8_t cls, uint8_t id, const uint8_t *pl, uint16_t len)
 {
     uint8_t b[64]; size_t n = ubx_build(b, cls, id, pl, len);
-    HAL_UART_Transmit(&huart4, b, (uint16_t)n, 100); HAL_Delay(25);
+    HAL_UART_Transmit(&huart2, b, (uint16_t)n, 100); HAL_Delay(25);
 }
 static void gps_configure(void)
 {
-    const uint8_t pvt[3] = { 0x01, 0x07, 1 }, dop[3] = { 0x01, 0x04, 1 };   /* CFG-MSG: NAV-PVT, NAV-DOP @1 */
+    const uint8_t pvt[7] = { 0x01, 0x07, 0, 1, 0, 0, 0 };   /* CFG-MSG: NAV-PVT @1Hz on UART1 */
+    const uint8_t dop[7] = { 0x01, 0x04, 0, 1, 0, 0, 0 };   /* CFG-MSG: NAV-DOP @1Hz on UART1 */
     const uint8_t rate[6] = { 0xE8, 0x03, 0x01, 0x00, 0x01, 0x00 };         /* CFG-RATE: 1000 ms, GPS time */
     uint8_t nav5[36] = { 0x01, 0x00, 3 };                                   /* CFG-NAV5: dynModel = pedestrian */
-    ubx_tx(0x06, 0x01, pvt, 3); ubx_tx(0x06, 0x01, dop, 3);
-    ubx_tx(0x06, 0x08, rate, 6); ubx_tx(0x06, 0x24, nav5, 36);
+    int ok = 1;
+    ubx_tx(0x06, 0x01, pvt, 7);  ok &= ubx_wait_ack(0x06, 0x01);  /* NAV-PVT */
+    ubx_tx(0x06, 0x01, dop, 7);  ok &= ubx_wait_ack(0x06, 0x01);  /* NAV-DOP */
+    ubx_tx(0x06, 0x08, rate, 6); ok &= ubx_wait_ack(0x06, 0x08);  /* CFG-RATE */
+    ubx_tx(0x06, 0x24, nav5, 36);ok &= ubx_wait_ack(0x06, 0x24);  /* CFG-NAV5 */
+    printf("GPS config %s\r\n", ok ? "ACK" : "NAK");
+}
+
+/* Wait up to ACK_TIMEOUT_MS for a UBX-ACK-ACK matching (cls,id) after a config command.
+   Drains the GPS ring buffer and feeds bytes through the UBX parser. */
+static int ubx_wait_ack(uint8_t cls, uint8_t id)
+{
+    uint32_t t0 = HAL_GetTick();
+    ubx_ack_clear();
+    while ((int32_t)(HAL_GetTick() - t0) < ACK_TIMEOUT_MS) {
+        uint8_t c;
+        while (rb_get(&gps_rb, &c))
+            ubx_feed(&ubx, c, &g_gps, HAL_GetTick());
+        if (ubx_ack_seen(cls, id)) return 1;
+        HAL_Delay(5);
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------ LCD */
@@ -276,7 +297,7 @@ void app_init(void)
     g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Artemis booting");
     g_bme_ok = (bme_port_init() == 0);   printf("BME688 %s\r\n", g_bme_ok ? "ok" : "FAIL");
     int r = radio_init();                printf("SX1262 %s\r\n", r == 0 ? "ok" : "FAIL");
-    HAL_UART_Receive_IT(&huart4, &gps_byte, 1);
+    HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
     gps_configure();
     bucket_t = HAL_GetTick(); bucket_us = BUCKET_MAX_US;

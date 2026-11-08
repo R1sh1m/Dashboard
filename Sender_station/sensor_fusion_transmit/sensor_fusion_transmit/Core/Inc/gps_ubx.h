@@ -26,4 +26,9 @@ size_t ubx_build(uint8_t *out, uint8_t cls, uint8_t id, const uint8_t *pl, uint1
 void   ubx_cfg_prt_reset(void);
 int    ubx_cfg_prt_acked(void);
 int    ubx_cfg_prt_wait_ack(UART_HandleTypeDef *huart, uint32_t timeout_ms);
+
+/* Generic UBX-ACK-ACK waiter: waits for ACK of the given CFG class/id.
+ * Returns 1 on ACK, 0 on timeout. */
+int    ubx_cfg_wait_ack(UART_HandleTypeDef *huart, uint32_t timeout_ms,
+                        uint8_t cls, uint8_t id);
 #endif

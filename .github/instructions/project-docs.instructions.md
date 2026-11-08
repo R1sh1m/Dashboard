@@ -1,9 +1,7 @@
 ---
 name: Artemis project documentation
 description: "Use when editing README files, Docs markdown, AGENTS.md, architecture notes, or other project guidance."
-applyTo:
-  - "**/*.md"
-  - "**/*.mdx"
+applyTo: "**/*.{md,mdx}"
 ---
 
 # Project Documentation Guidance

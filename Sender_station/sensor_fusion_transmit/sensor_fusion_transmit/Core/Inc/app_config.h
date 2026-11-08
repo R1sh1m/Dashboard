@@ -20,7 +20,7 @@
 #define BACKOFF_JITTER_MS  100u
 
 /* ---- duty cycle (token bucket). 10 = 1 %  (ETSI style). 1000 = disabled ---- */
-#define DUTY_PERMILLE      10u   /* 10 permille = 1% duty cycle (ETSI band budget) */
+#define DUTY_PERMILLE      1000u   /* 1000 = disabled for continuous multi-sensor telemetry */
 #define DUTY_WINDOW_S      3600u
 
 /* ---- fragmentation ---- */

@@ -175,6 +175,8 @@ typedef struct {
 } shadow_state_t;
 
 static shadow_state_t shadow;
+static uint8_t env_valid = 0;
+static uint8_t walking_latched = 0;
 
 static void shadow_init(void)
 {
@@ -253,9 +255,6 @@ static void shadow_update(uint8_t type, const uint8_t *pl, uint8_t len, int8_t r
 #define USB_TX_BUF_SIZE 1024
 #define WALKING_ENTER_SPEED_MPS 0.35
 #define WALKING_EXIT_SPEED_MPS 0.15
-
-static uint8_t env_valid;
-static uint8_t walking_latched;
 
 /**
  * @brief Emit shadow state as JSON over USB-CDC
