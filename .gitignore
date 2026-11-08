@@ -100,7 +100,24 @@ gdb_cmd*.txt
 sx126*.diff
 *DESIGN.md
 design*.md
-# bsec*/
-!Sender_station/**/bsec_config.h
-bin/
-.cache/
+
+# Proprietary — BSEC (Bosch Sensortec) must be obtained separately from Bosch.
+# Do NOT commit BSEC SDK, headers, config files, or pre-built binaries.
+bsec_v3-3-0-1/
+**/Core/Inc/bsec/
+**/Core/Lib/bsec/
+**/libalgobsec.a
+**/bsec*.a
+
+# IDE project files (personal / per-machine)
+.cproject
+.mxproject
+.project
+*.launch
+**/*.launch
+
+# Test artifacts
+Docs/TestResults/
+
+# Personal reference files
+Sender_station/guide.pdf
