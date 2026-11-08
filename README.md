@@ -1,7 +1,7 @@
 # Artemis Ground Station Dashboard
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/your-org/artemis-dashboard/main/public/artemis-logo.png" alt="Artemis Ground Station" width="120" height="120" />
+  <img src="./public/artemis-logo.png" alt="Artemis Ground Station" width="120" height="120" />
 </p>
 
 <p align="center">
@@ -9,9 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/your-org/artemis-dashboard/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/your-org/artemis-dashboard/ci.yml?label=CI&style=for-the-badge" alt="Build Status" />
-  </a>
   <a href="https://www.typescriptlang.org/">
     <img src="https://img.shields.io/badge/TypeScript-6.0-blue?style=for-the-badge&logo=typescript" alt="TypeScript" />
   </a>
@@ -28,13 +25,13 @@
 
 ---
 
-## 🎯 Purpose
+## Purpose
 
 The Artemis Ground Station Dashboard is a single-page web interface for monitoring and controlling an autonomous rover equipped with LoRa telemetry, GPS, environmental sensing, and mmWave radar. It aggregates data from the ground-side ESP32 receiver and presents it to operators in near-real time.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 | Layer | Technology |
 |-------|------------|
@@ -54,7 +51,7 @@ The application lives in `src/`:
 
 ---
 
-## 📡 Communication & Packet Flow
+## Communication & Packet Flow
 
 ### 1. LoRa Radio Layer
 
@@ -98,7 +95,7 @@ Full definitions are in [`src/types/telemetry.ts`](src/types/telemetry.ts) and m
 
 ---
 
-## 📦 Sensor Constraints
+## Sensor Constraints
 
 | Sensor | Interface | Key Limits |
 |--------|-----------|------------|
@@ -111,7 +108,7 @@ These limits are enforced in the STM32 firmware ([`Docs/STM32_Sender.md`](Docs/S
 
 ---
 
-## 🔌 Hardware Pinouts
+## Hardware Pinouts
 
 All pin assignments are locked in [`Docs/HARDWARE_WIRING_PIN_LOCK.md`](Docs/HARDWARE_WIRING_PIN_LOCK.md). The tables below are consolidated for quick reference.
 
@@ -171,7 +168,7 @@ All pin assignments are locked in [`Docs/HARDWARE_WIRING_PIN_LOCK.md`](Docs/HARD
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -204,18 +201,25 @@ npm run preview # Serve the built files locally
 
 ---
 
-## 📡 APIs & Integration Points
+## External APIs & Services
+
+| API / Service | Purpose | Used In |
+|---------------|---------|---------|
+| **Web Serial API** (browser) | Opens USB-CDC ports, reads newline-delimited JSON telemetry, sends text commands to the ESP32. | `src/services/webSerial.ts` |
+| **Leaflet + OpenStreetMap tiles** | Interactive map rendering, rover position tracking, waypoint navigation. | `src/components/MapView.tsx` |
+| **Lucide React** | Vector iconography for UI controls, status badges, and navigation. | All UI components |
+
+## Internal APIs & Integration Points
 
 | Interface | Description |
 |-----------|-------------|
-| **Web Serial API** | Opens a USB-CDC port, reads newline-delimited JSON, sends text commands (e.g., `E-STOP`). |
 | **Telemetry JSON** | Subscribe to the `onPacket` callback to receive typed `TelemetryPacket` objects. |
 | **Command Interface** | `WebSerialManager.sendCommand(cmd)` writes a line-terminated string to the ESP32. Commands: `STOP` (emergency stop), `HOME` (recenter map), `PING` (health check). |
 | **Simulator** | `src/services/simulator.ts` generates mock telemetry for development without hardware. |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 artemis-dashboard/
@@ -237,7 +241,7 @@ artemis-dashboard/
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -246,12 +250,11 @@ artemis-dashboard/
 | [`Docs/ESP32_Receiver.md`](Docs/ESP32_Receiver.md) | ESP32 ground receiver build & flash guide |
 | [`Docs/ESP32_LoRa_Wiring.md`](Docs/ESP32_LoRa_Wiring.md) | ESP32 → SX1262 wiring details |
 | [`Docs/STM32_Sender.md`](Docs/STM32_Sender.md) | STM32 sender build & flash guide |
-| [`Docs/DESIGN.md`](Docs/DESIGN.md) | Dashboard UI/UX design system (Apple HIG) |
-| [`Docs/APPLE_MAPS.md`](Docs/APPLE_MAPS.md) | Map search, bottom-sheet, POI card patterns |
+| [`Docs/DESIGN.md`](Docs/DESIGN.md) | Dashboard UI/UX design system |
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome. Follow the standard workflow:
 
@@ -262,6 +265,6 @@ Contributions are welcome. Follow the standard workflow:
 
 ---
 
-## 📄 License
+## License
 
 MIT License — see the [`LICENSE`](LICENSE) file for details.
