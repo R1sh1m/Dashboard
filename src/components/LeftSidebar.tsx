@@ -111,7 +111,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </button>
           {([
             ['env', 'Environment sensors', CloudSun],
-            ['link', 'LoRa wireless link', Radio],
+            ['link', 'LoRa module', Radio],
             ['gps', 'GPS', Satellite],
             ['radar', 'Radar', Radar],
             ['logs', 'Logs', TerminalSquare],
@@ -134,7 +134,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       <span key={bar} className={bar <= loraBars ? 'is-active' : ''} />
                     ))}
                   </span>
-                  <span>{loraBars}/4</span>
                 </span>
               )}
             </button>

@@ -67,6 +67,7 @@ opencode.json
 opencode.jsonc
 .context/
 context/
+.github/instructions/
 
 # IDEs & Editor Configuration (Internal Settings)
 .vscode/

@@ -302,10 +302,6 @@ static void gps_configure(void)
     const uint8_t cfg_prt[28] = { 0xB5,0x62,0x06,0x00,0x14,0x00, 0x01,0x00,0x00,0x00, 0xD0,0x08,0x00,0x00,
                                   0x00,0xC2,0x01,0x00, 0x07,0x00,0x03,0x00, 0x00,0x00,0x00,0x00, 0x43,0x9C };
 
-    /* Disable interrupt-driven RX during config so blocking ACK waits
-     * don't compete with the RX ISR for the same UART data register. */
-    HAL_UART_Abort(&huart2);
-
     /* Send CFG-PRT at initial 9600 baud to configure module, then verify ACK-ACK handshake */
     ubx_cfg_prt_reset();
     HAL_UART_Transmit(&huart2, cfg_prt, 28, 100);
@@ -318,8 +314,7 @@ static void gps_configure(void)
     HAL_UART_Abort(&huart2);
     huart2.Init.BaudRate = 115200;
     HAL_UART_Init(&huart2);
-    /* IT restart moved to end of gps_configure() to avoid conflict with
-     * ubx_cfg_wait_ack() blocking receives. */
+    HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_Delay(50);
 
     /* Also transmit at 115200 in case module was already running at 115200 across MCU warm resets */
@@ -342,9 +337,6 @@ static void gps_configure(void)
     if (!ubx_cfg_wait_ack(&huart2, 1000, 0x06, 0x08)) printf("CFG-RATE ACK FAIL\r\n");
     ubx_tx(0x06, 0x24, nav5, 36);
     if (!ubx_cfg_wait_ack(&huart2, 1000, 0x06, 0x24)) printf("CFG-NAV5 ACK FAIL\r\n");
-
-    /* Restart interrupt-driven RX now that config is complete */
-    HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
 }
 
 /* ------------------------------------------------------------------ LCD */
@@ -378,25 +370,15 @@ static void lcd_update(uint32_t now)
 /* ------------------------------------------------------------------ init / loop */
 /* Independent Watchdog: LSI ~32 kHz, prescaler /64 (PR=4), reload 249
  * Timeout = (249+1) * 64 / 32000 ≈ 500 ms.  Kick in app_loop() each pass. */
-/* Independent Watchdog: LSI ~32 kHz, prescaler /256 (PR=6), reload 500
- * Timeout = (500+1) * 256 / 32000 ≈ 4.0 seconds.  Kick in app_loop() each pass. */
 static void iwdg_init(void)
 {
-    /* Enable LSI oscillator and wait until ready (with bounded timeout) */
-    RCC->CSR |= RCC_CSR_LSION;
-    for (volatile uint32_t i = 0; !(RCC->CSR & RCC_CSR_LSIRDY) && i < 100000u; i++) {}
-
-    /* Start the watchdog (0xCCCC) which also enables LSI */
-    IWDG->KR = 0x0000CCCCu;
-    /* Enable write access to PR and RLR registers (0x5555) */
-    IWDG->KR = 0x00005555u;
-    for (volatile uint32_t i = 0; (IWDG->SR & IWDG_SR_PVU) && i < 100000u; i++) {}
-    IWDG->PR = 6u;                   /* /256 prescaler (~125 Hz clock) */
-    for (volatile uint32_t i = 0; (IWDG->SR & IWDG_SR_RVU) && i < 100000u; i++) {}
-    IWDG->RLR = 500u;                /* ~4.0 s window */
-    for (volatile uint32_t i = 0; (IWDG->SR != 0u) && i < 100000u; i++) {}
-    /* First reload (kick) */
-    IWDG->KR = 0x0000AAAAu;
+    IWDG->KR = 0x00005555u;          /* enable write access to PR/RLR */
+    while (IWDG->SR & 0x00000002u) {} /* wait PVD bit? no, wait for RLV/PVU flags clear */
+    IWDG->PR = 4u;                   /* /64 prescaler */
+    IWDG->RLR = 249u;                /* ~500 ms window */
+    while (IWDG->SR != 0u) {}        /* wait for registers to update */
+    IWDG->KR = 0x0000CCCCu;          /* start the watchdog */
+    IWDG->KR = 0x0000AAAAu;          /* first reload (kick) */
 }
 
 void app_init(void)
@@ -404,6 +386,10 @@ void app_init(void)
     const char *boot_msg = "\r\n=== SENDER TX BOOT ===\r\n";
     HAL_UART_Transmit(&huart3, (uint8_t *)boot_msg, (uint16_t)strlen(boot_msg), 100);
     printf("Sender TX start\r\n");
+
+    /* Start the independent watchdog for headless auto-recovery from
+     * transient faults / brownouts.  ~500 ms timeout. */
+    iwdg_init();
 
     /* All inits below return quickly with an ok/fail flag.  None blocks
      * indefinitely: lcd_init is time-bounded, bme/radio/gps use bounded HAL
@@ -421,10 +407,6 @@ void app_init(void)
     gps_configure();
     bucket_t = HAL_GetTick(); bucket_us = BUCKET_MAX_US;
     rnd_state ^= DWT->CYCCNT | 1u;
-
-    /* Start the independent watchdog once all hardware is initialized,
-     * right before entering main loop. ~4.0 s window. */
-    iwdg_init();
     printf("App ready, entering main loop\r\n");
 }
 
