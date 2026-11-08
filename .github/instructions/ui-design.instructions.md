@@ -9,7 +9,7 @@ applyTo:
 # Dashboard UI Guidance
 
 Use [Docs/DESIGN.md](../../Docs/DESIGN.md) as the source of truth for the
-dashboard's Apple HIG translation. Before completing a UI change, check its
+dashboard design standards. Before completing a UI change, check its
 review checklist and preserve the existing CSS variable and component patterns.
 
 - Keep interactive targets at least 44 x 44 px.

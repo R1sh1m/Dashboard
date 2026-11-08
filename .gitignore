@@ -1,91 +1,93 @@
-# Logs
-logs
+# ==============================================================================
+# Team Artemis Ground Station Dashboard - Git Ignore Rules
+# ==============================================================================
+
+# Node.js & Web Dependencies
+node_modules/
+.npm/
+
+# Web & Project Build Outputs
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+
+# Test & E2E Run Artifacts (keep tests/ directory tracked!)
+test-results/
+playwright-report/
+blob-report/
+
+# Embedded C / C++ Compiler & Linker Outputs
+*.o
+*.obj
+*.d
+*.su
+*.elf
+*.bin
+*.hex
+*.map
+subdir.mk
+makefile.init
+
+# ESP-IDF Build Artifacts & Configuration Backups
+esp_receiver/build/
+esp_receiver/sdkconfig.old
+
+# STM32 Build & IDE Artifacts
+Sender_station/**/bin/
+Sender_station/**/Debug/
+Sender_station/**/Release/
+Sender_station/**/.settings/
+
+# Python Cache & Virtual Environments
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Clangd & Tooling Intermediate Files
+.clangd
+**/.clangd
+.clangd/
+**/.clangd/
+compile_commands.json
+**/compile_commands.json
+
+# Internal Agent Frameworks, Skills & Configs (Internal Use Only)
+AGENTS.md
+*AGENTS*.md
+.agents/
+.agents*/
+.opencode/
+.opencode*/
+opencode.json
+opencode.jsonc
+.context/
+context/
+
+# IDEs & Editor Configuration (Internal Settings)
+.vscode/
+.vscode/*
+settings.json
+**/settings.json
+.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & Temporary Files
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
-
-# Dependencies & Build Output
-node_modules
-dist
-dist-ssr
-*.local
-.cache
-.vite
-esp_receiver/build/
-
-# Firmware / embedded build output (Sender_station, STM32 toolchain)
-Sender_station/**/Debug/
-*.o
-*.d
-*.elf
-*.map
-*.list
-*.cyclo
-*.su
-objects.list
-objects.mk
-
-# Eclipse / STM32CubeIDE project files
-.cproject
-.mxproject
-.project
-.settings/
-
-# Editor & OS files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-Thumbs.db
-
-# Local assets & media (keep Docs/ tracked)
-public/assets/
-
-# Agent & context local specs
-.agents/
-.opencode/
-.context/
-context/
-opencode.json
-opencode.jsonc
-AGENTS.md
-
-# External design reference (not tracked per operator request)
-Docs/*_MAPS.md
-
-# Build artifacts and generated files
-build/
-**/build/
-**/subdir.mk
-Sender_station/**/build.bat
-Sender_station/**/makefile.init
-Sender_station/**/App/
-
-# Binary firmware outputs & flash dumps
-*.bin
-*.hex
-bin/
-**/bin/
-
-# Machine-specific toolchain & editor compilation databases
-.clangd
-**/.clangd
-compile_commands.json
-**/compile_commands.json
-esp_receiver/sdkconfig.old
-**/sdkconfig.old
-
-# Python cache & temporary debug files
-__pycache__/
-*.py[cod]
-gdb_cmds.txt
 *.tmp
-

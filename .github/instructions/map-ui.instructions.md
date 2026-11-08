@@ -10,8 +10,7 @@ applyTo:
 
 # Map and Location Guidance
 
-Use [Docs/APPLE_MAPS.md](../../Docs/APPLE_MAPS.md) together with
-[Docs/DESIGN.md](../../Docs/DESIGN.md) for map-related work.
+Use [Docs/DESIGN.md](../../Docs/DESIGN.md) for map-related work.
 
 - Keep map controls in a reachable, translucent control stack with 44 x 44 px
   targets and visible focus states.
