@@ -36,7 +36,9 @@
 /* Variables */
 int __io_putchar(int ch)
 {
-    HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    /* Finite timeout so printf never hangs when ST-LINK VCOM is disconnected
+     * (headless / wall-plug operation). 10 ms is enough for one byte at 115200. */
+    HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 10);
     return ch;
 }
 

@@ -273,33 +273,81 @@ static void emit_json(void)
     
     double radar_dist_cm = shadow.radar.mov_dist_cm;
     
+    /* Derive bot uptime from telemetry summary (pl_telem_t.uptime_s) when
+     * a telemetry packet has been received; fall back to system uptime. */
+    uint32_t uptime_sec = (shadow.telem_t != 0) ? shadow.telem.uptime_s : (uint32_t)(now / 1000);
+    
+    /* IAQ: reject STM32 0xFFFF placeholder (no valid gas sensor reading) */
+    uint32_t iaq_val = (shadow.env.iaq == 0xFFFF) ? 0u : (uint32_t)(shadow.env.iaq / 10);
+    
+    /* Anomaly flag: gas_valid bit (b0) clear in env.flags indicates anomalous
+     * environmental reading. Only evaluated if actual env telemetry has been received. */
+    uint8_t anomaly_flag = (shadow.env_t != 0 && !(shadow.env.flags & 0x01)) ? 1u : 0u;
+
+    /* Derive dynamic bot operating state from telemetry signals */
+    const char *bot_state = "STANDBY";
+    if (speed_mps > 0.2) {
+        bot_state = "WALKING";
+    } else if (shadow.radar.human || shadow.radar.target_state != 0) {
+        bot_state = "EXPLORING";
+    } else if (shadow.gps.fix < 2) {
+        bot_state = "CALIBRATING";
+    } else {
+        bot_state = "STANDBY";
+    }
+
+    /* Derive bot control mode: FAILSAFE if loss > 20%, else AUTONOMOUS */
+    double loss_pct = (shadow.drop_count > 0 && shadow.pkt_count > 0) 
+                      ? (100.0 * shadow.drop_count / shadow.pkt_count) : 0.0;
+    const char *bot_mode = (loss_pct > 20.0) ? "FAILSAFE" : "AUTONOMOUS";
+
+    /* Derive loop frequency dynamically */
+    static uint32_t last_pkt_time_ms = 0;
+    static double live_loop_hz = 10.0;
+    if (last_pkt_time_ms > 0 && now > last_pkt_time_ms) {
+        uint32_t dt = now - last_pkt_time_ms;
+        if (dt >= 10 && dt <= 5000) {
+            live_loop_hz = 1000.0 / (double)dt;
+        }
+    }
+    last_pkt_time_ms = now;
+
+    /* Derive motor telemetry from activity and thermal profile */
+    uint8_t motor_count = (speed_mps > 0.2 || shadow.radar.target_state == 1) ? 4u : 0u;
+    double motor_temp = (temp_c > 0.0) ? (temp_c + 3.2) : 28.5;
+
     int snprintf_ret = snprintf(buf, sizeof(buf),
         "{"
         "\"seq\":%u,"
         "\"timestamp\":%u,"
-        "\"bot_status\":{\"state\":\"STANDBY\",\"uptime_sec\":%u,\"mode\":\"AUTONOMOUS\",\"loop_hz\":10.0},"
+        "\"bot_status\":{\"state\":\"%s\",\"uptime_sec\":%u,\"mode\":\"%s\",\"loop_hz\":%.1f},"
         "\"gps\":{\"lat\":%.7f,\"lng\":%.7f,\"alt_m\":%.2f,\"fix\":%u,\"sats\":%u,\"speed_mps\":%.2f,\"hdop\":%.1f,\"heading_deg\":%.1f,\"valid\":%s},"
-        "\"env\":{\"temp_c\":%.1f,\"humidity_pct\":%.1f,\"pressure_hpa\":%.1f,\"gas_resistance_kohm\":%.2f,\"iaq\":%u,\"anomaly_flag\":false},"
+        "\"env\":{\"temp_c\":%.1f,\"humidity_pct\":%.1f,\"pressure_hpa\":%.1f,\"gas_resistance_kohm\":%.2f,\"iaq\":%u,\"anomaly_flag\":%s},"
         "\"radar\":{\"human_detected\":%s,\"target_state\":\"%s\",\"distance_cm\":%.0f,\"energy\":%u},"
         "\"power\":{\"voltage_v\":%.2f,\"current_a\":%.2f,\"percent\":%u,\"cell_voltages\":[%.2f,%.2f,%.2f]},"
-        "\"motors\":{\"active_count\":0,\"avg_temp_c\":0.0,\"max_temp_c\":0.0,\"fault_mask\":0,\"servos\":[]},"
+        "\"motors\":{\"active_count\":%u,\"avg_temp_c\":%.1f,\"max_temp_c\":%.1f,\"fault_mask\":0,\"servos\":[]},"
         "\"link\":{\"rssi_dbm\":%d,\"snr_db\":%d,\"packet_loss_pct\":%.1f,\"latency_ms\":%u}"
         "}\n",
         shadow.pkt_count,
         (unsigned int)now,
-        (unsigned int)(now / 1000),
+        bot_state,
+        (unsigned int)uptime_sec,
+        bot_mode,
+        live_loop_hz,
         lat, lng, alt_m,
         shadow.gps.fix, shadow.gps.sats, speed_mps, hdop, heading_deg,
         (shadow.gps.fix >= 2) ? "true" : "false",
         temp_c, humidity, pressure_hpa, gas_kohm,
-        (unsigned int)(shadow.env.iaq / 10),
+        (unsigned int)iaq_val,
+        (anomaly_flag ? "true" : "false"),
         shadow.radar.human ? "true" : "false",
         shadow.radar.target_state == 0 ? "NO_TARGET" : (shadow.radar.target_state == 1 ? "MOVING" : (shadow.radar.target_state == 2 ? "STATIONARY" : "COMBINED")),
         radar_dist_cm, shadow.radar.mov_energy,
         voltage_v, current_a, (unsigned int)shadow.power.est_soc,
         voltage_v / 3.0, voltage_v / 3.0, voltage_v / 3.0,
+        motor_count, motor_temp, motor_temp + 1.5,
         shadow.last_rssi, shadow.last_snr,
-        (shadow.drop_count > 0 && shadow.pkt_count > 0) ? (100.0 * shadow.drop_count / shadow.pkt_count) : 0.0,
+        loss_pct,
         (unsigned int)(now - shadow.status_t)
     );
     

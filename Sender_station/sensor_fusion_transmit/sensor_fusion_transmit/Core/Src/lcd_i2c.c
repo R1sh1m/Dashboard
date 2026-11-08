@@ -52,66 +52,78 @@ static void send(uint8_t value, uint8_t mode)
     write4bits((uint8_t)(lownib  | mode));
 }
 
-/* ── Try initializing on a specific 7-bit address on a given bus ────────── */
+/* ── Try initializing on a specific 7-bit address on a given bus ──────────
+ * Retries up to LCD_PROBE_RETRIES times with short delays so a slow-to-power-up
+ * LCD or momentary I2C glitch doesn't cause a false negative. */
+#define LCD_PROBE_RETRIES 3u
+#define LCD_PROBE_DELAY_MS 10u
+
 static int try_init_addr(I2C_HandleTypeDef *hi2c, uint8_t addr7)
 {
     uint8_t a8 = (uint8_t)(addr7 << 1);
     uint8_t test_byte = BL;
 
-    /* 1. Try sending 1 byte (backlight ON) */
-    HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(hi2c, a8, &test_byte, 1, 30);
-    uint32_t err = hi2c->ErrorCode;
+    for (uint32_t attempt = 0; attempt < LCD_PROBE_RETRIES; attempt++) {
+        /* 1. Try sending 1 byte (backlight ON) */
+        HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(hi2c, a8, &test_byte, 1, 30);
+        uint32_t err = hi2c->ErrorCode;
 
-    printf("  Probe 0x%02X: Transmit=%d (err=0x%lX)\r\n", addr7, st, err);
+        printf("  Probe 0x%02X attempt %lu: Transmit=%d (err=0x%lX)\r\n", addr7, (unsigned long)(attempt + 1), st, err);
 
-    if (st != HAL_OK) {
-        return 0; /* No ACK */
+        if (st == HAL_OK) {
+            printf("  >>> SUCCESS! PCF8574 ACked at 0x%02X! <<<\r\n", addr7);
+            lcd_addr8 = a8;
+            lcd_hi2c  = hi2c;
+            ok        = 1;
+            lcd_bl    = BL;
+
+            /* Arduino LiquidCrystal_I2C initialization sequence (HD44780 datasheet page 45-46) */
+            HAL_Delay(50); /* wait for power to stabilize */
+
+            /* Reset expander and turn backlight on */
+            expander_write(lcd_bl);
+            HAL_Delay(100);
+
+            /* 3x 0x03 to force 8-bit reset, then 0x02 to switch to 4-bit mode */
+            write4bits(0x30);
+            HAL_Delay(5);   /* wait > 4.1ms */
+            write4bits(0x30);
+            HAL_Delay(5);   /* wait > 4.1ms */
+            write4bits(0x30);
+            HAL_Delay(2);   /* wait > 100us */
+            write4bits(0x20);  /* 4-bit mode */
+            HAL_Delay(2);
+
+            /* Function set: 2 lines, 5x8 font */
+            send(0x28, 0);
+            HAL_Delay(2);
+
+            /* Display control: display off */
+            send(0x08, 0);
+            HAL_Delay(2);
+
+            /* Clear display */
+            send(0x01, 0);
+            HAL_Delay(5);
+
+            /* Entry mode set: increment cursor, no shift */
+            send(0x06, 0);
+            HAL_Delay(2);
+
+            /* Display control: display ON, cursor OFF, blink OFF */
+            send(0x0C, 0);
+            HAL_Delay(2);
+
+            return 1;
+        }
+
+        /* Delay before retry (skip delay on last attempt) */
+        if (attempt + 1 < LCD_PROBE_RETRIES) {
+            HAL_Delay(LCD_PROBE_DELAY_MS);
+        }
     }
 
-    printf("  >>> SUCCESS! PCF8574 ACked at 0x%02X! <<<\r\n", addr7);
-    lcd_addr8 = a8;
-    lcd_hi2c  = hi2c;
-    ok        = 1;
-    lcd_bl    = BL;
-
-    /* Arduino LiquidCrystal_I2C initialization sequence (HD44780 datasheet page 45-46) */
-    HAL_Delay(50); /* wait for power to stabilize */
-
-    /* Reset expander and turn backlight on */
-    expander_write(lcd_bl);
-    HAL_Delay(100);
-
-    /* 3x 0x03 to force 8-bit reset, then 0x02 to switch to 4-bit mode */
-    write4bits(0x30);
-    HAL_Delay(5);   /* wait > 4.1ms */
-    write4bits(0x30);
-    HAL_Delay(5);   /* wait > 4.1ms */
-    write4bits(0x30);
-    HAL_Delay(2);   /* wait > 100us */
-    write4bits(0x20);  /* 4-bit mode */
-    HAL_Delay(2);
-
-    /* Function set: 2 lines, 5x8 font */
-    send(0x28, 0);
-    HAL_Delay(2);
-
-    /* Display control: display off */
-    send(0x08, 0);
-    HAL_Delay(2);
-
-    /* Clear display */
-    send(0x01, 0);
-    HAL_Delay(5);
-
-    /* Entry mode set: increment cursor, no shift */
-    send(0x06, 0);
-    HAL_Delay(2);
-
-    /* Display control: display ON, cursor OFF, blink OFF */
-    send(0x0C, 0);
-    HAL_Delay(2);
-
-    return 1;
+    return 0; /* No ACK after all retries */
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -121,6 +133,8 @@ int lcd_init(void)
 {
     ok = 0;
     int found_any = 0;
+    uint32_t scan_start = HAL_GetTick();
+    uint32_t scan_budget_ms = 800u;   /* bound full bus scan so boot never hangs */
 
     /* I2C buses to scan in priority order. I2C1 FIRST per hardware doc. */
     I2C_HandleTypeDef *buses[] = { &hi2c1, &hi2c2, &hi2c3 };
@@ -148,13 +162,24 @@ int lcd_init(void)
     }
 
     /* 2. Full bus scan for remaining devices on all buses (BME688 at 0x76/0x77,
-     *    plus any other LCD in 0x20-0x3F). Skip already-probed addrs on I2C1. */
+     *    plus any other LCD in 0x20-0x3F). Skip already-probed addrs on I2C1.
+     *    Bounded by scan_budget_ms so headless boot never hangs. */
     for (int b = 0; b < num_buses; b++) {
+        /* Stop scanning if we've used our time budget */
+        if ((int32_t)(HAL_GetTick() - scan_start) >= (int32_t)scan_budget_ms) {
+            printf("\r\n=== %s Full Bus Scan SKIPPED (time budget expired) ===\r\n", bus_names[b]);
+            break;
+        }
         I2C_HandleTypeDef *hi2c = buses[b];
         const char *bus_name = bus_names[b];
 
         printf("\r\n=== %s Full Bus Scan (all 127 addresses) ===\r\n", bus_name);
         for (uint8_t a = 1; a < 127; a++) {
+            /* Abort if time budget expired mid-scan */
+            if ((int32_t)(HAL_GetTick() - scan_start) >= (int32_t)scan_budget_ms) {
+                printf("\r\n=== %s Full Bus Scan ABORTED (time budget expired at 0x%02X) ===\r\n", bus_name, a);
+                break;
+            }
             /* Skip already-probed addresses on I2C1 only */
             if (b == 0 && (a == LCD_I2C_ADDR || a == 0x27u)) continue;
             uint8_t a8 = (uint8_t)(a << 1);

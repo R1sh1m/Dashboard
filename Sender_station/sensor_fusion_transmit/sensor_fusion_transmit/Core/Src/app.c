@@ -289,14 +289,18 @@ static void ubx_tx(uint8_t cls, uint8_t id, const uint8_t *pl, uint16_t len)
 }
 static void gps_configure(void)
 {
-    /* 1. Switch NEO-M8N UART to 115200 baud via UBX-CFG-PRT (28 bytes, per Docs/Datasheets/NEO-M8_Datasheet_Summary.md §5.2)
-     *    Payload: portID=1(UART1), mode=8N1, baudRate=0x0001C200=115200, inProto=UBX+NMEA, outProto=UBX+NMEA */
-    const uint8_t cfg_prt[28] = { 0xB5,0x62,0x06,0x00,0x14,0x00, 0x01,0x00,0x00,0x00, 0x00,0xC2,0x01,0x00,
-                                  0x00,0xC2,0x01,0x00,0x07,0x00,0x03,0x00,0x00,0x00,0x00,0x00,0xAB,0x72 };
-    /* cfg_prt is already a complete UBX message (header+payload+checksum). Send raw, do NOT wrap via ubx_tx.
-     * baudRate=0x0001C200=115200 at payload offset 4, inProtoMask=UBX+NMEA, outProtoMask=UBX+NMEA. */
+    /* 1. Switch NEO-M8N UART to 115200 baud via UBX-CFG-PRT (28 bytes, per Docs/Datasheets/NEO-M8_Datasheet_Summary.md section 5.2)
+     *    Payload: portID=1(UART1), mode=8N1 (0x000008D0), baudRate=0x0001C200=115200, inProto=UBX+NMEA, outProto=UBX+NMEA */
+    const uint8_t cfg_prt[28] = { 0xB5,0x62,0x06,0x00,0x14,0x00, 0x01,0x00,0x00,0x00, 0xD0,0x08,0x00,0x00,
+                                  0x00,0xC2,0x01,0x00, 0x07,0x00,0x03,0x00, 0x00,0x00,0x00,0x00, 0xC0,0x7E };
+
+    /* Send CFG-PRT at initial 9600 baud to configure module, then verify ACK-ACK handshake */
+    ubx_cfg_prt_reset();
     HAL_UART_Transmit(&huart2, cfg_prt, 28, 100);
-    HAL_Delay(100);  /* let module process CFG-PRT and switch to 115200 before we touch BRR */
+    int acked = ubx_cfg_prt_wait_ack(&huart2, 500);  /* ACK arrives at 9600 baud before module switches */
+    printf("CFG-PRT ACK %s\r\n", acked ? "ok" : "FAIL");
+
+    HAL_Delay(100);  /* let module finish switching to 115200 before we touch BRR */
 
     /* After CFG-PRT the module switches its UART to 115200. Reconfigure huart2 to match before any further traffic. */
     HAL_UART_Abort(&huart2);
@@ -304,6 +308,13 @@ static void gps_configure(void)
     HAL_UART_Init(&huart2);
     HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_Delay(50);
+
+    /* Also transmit at 115200 in case module was already running at 115200 across MCU warm resets */
+    ubx_cfg_prt_reset();
+    HAL_UART_Transmit(&huart2, cfg_prt, 28, 100);
+    acked = ubx_cfg_prt_wait_ack(&huart2, 500);  /* ACK arrives at 115200 baud */
+    printf("CFG-PRT @115200 ACK %s\r\n", acked ? "ok" : "FAIL");
+    HAL_Delay(25);
 
     /* 2. Set navigation rate to 10 Hz (100 ms) via CFG-RATE */
     const uint8_t pvt[3] = { 0x01, 0x07, 1 }, dop[3] = { 0x01, 0x04, 1 };   /* CFG-MSG: NAV-PVT, NAV-DOP @1 */
@@ -342,11 +353,32 @@ static void lcd_update(uint32_t now)
 }
 
 /* ------------------------------------------------------------------ init / loop */
+/* Independent Watchdog: LSI ~32 kHz, prescaler /64 (PR=4), reload 249
+ * Timeout = (249+1) * 64 / 32000 ≈ 500 ms.  Kick in app_loop() each pass. */
+static void iwdg_init(void)
+{
+    IWDG->KR = 0x00005555u;          /* enable write access to PR/RLR */
+    while (IWDG->SR & 0x00000002u) {} /* wait PVD bit? no, wait for RLV/PVU flags clear */
+    IWDG->PR = 4u;                   /* /64 prescaler */
+    IWDG->RLR = 249u;                /* ~500 ms window */
+    while (IWDG->SR != 0u) {}        /* wait for registers to update */
+    IWDG->KR = 0x0000CCCCu;          /* start the watchdog */
+    IWDG->KR = 0x0000AAAAu;          /* first reload (kick) */
+}
+
 void app_init(void)
 {
     const char *boot_msg = "\r\n=== SENDER TX BOOT ===\r\n";
     HAL_UART_Transmit(&huart3, (uint8_t *)boot_msg, (uint16_t)strlen(boot_msg), 100);
     printf("Sender TX start\r\n");
+
+    /* Start the independent watchdog for headless auto-recovery from
+     * transient faults / brownouts.  ~500 ms timeout. */
+    iwdg_init();
+
+    /* All inits below return quickly with an ok/fail flag.  None blocks
+     * indefinitely: lcd_init is time-bounded, bme/radio/gps use bounded HAL
+     * timeouts, and app_loop retries LCD hot-plug every 1500 ms. */
     g_lcd_ok = (lcd_init() == 0); lcd_print(0, "Sender booting");
     g_bme_ok = (bme_port_init() == 0);   printf("BME688 %s\r\n", g_bme_ok ? "ok" : "FAIL");
     if (g_bme_ok) {
@@ -418,6 +450,10 @@ void app_loop(void)
     static uint32_t t_gps, t_hb, t_pwr, t_env, t_tel, t_lcd, t_alert; static uint8_t last_det;
     uint32_t now = HAL_GetTick(); uint8_t c;
 
+    /* Kick the independent watchdog every pass (~500 ms window) so a
+     * transient fault or brownout triggers an automatic reset + reboot. */
+    IWDG->KR = 0x0000AAAAu;
+
     while (rb_get(&gps_rb, &c)) {
         /* ---- NMEA sentence collection ---- */
         if (c == '$') {
@@ -447,13 +483,13 @@ void app_loop(void)
                             uint8_t q = (uint8_t)atoi(f[6]);
                             if (q > 0) {
                                 g_gps.fix = (q == 1) ? 3 : (q == 2 ? 4 : q);
-                            } else if (g_gps.fix < 2 && g_gps.lat_e7 != 0 && g_gps.lon_e7 != 0) {
-                                g_gps.fix = 3;
+                            } else {
+                                g_gps.fix = 0;
                             }
                         }
                         if (f_idx > 7 && f[7] && *f[7]) {
                             uint8_t used = (uint8_t)atoi(f[7]);
-                            if (used > 0) g_gps.sats = used;
+                            if (used > 0 || g_gps.fix > 0) g_gps.sats = used;
                         }
                         if (f_idx > 3 && f[2] && *f[2] && f[3] && *f[3]) {
                             g_gps.lat_e7 = parse_nmea_coord(f[2], *f[3], 0);
@@ -486,14 +522,28 @@ void app_loop(void)
                         }
                         g_gps.last_ms = now ? now : 1;
                     }
-                    else if (strncmp(nmea_buf, "$GPGSV", 6) == 0) {
-                        static uint8_t gsv_gps = 0;
-                        if (f_idx > 3 && f[3] && *f[3]) gsv_gps = (uint8_t)atoi(f[3]);
-                        if (g_gps.fix == 0 && gsv_gps > 0) g_gps.sats = gsv_gps;
-                        g_gps.last_ms = now ? now : 1;
-                    }
-                    else if (strncmp(nmea_buf, "$GLGSV", 6) == 0) {
-                        /* GLONASS GSV logged, keep primary GPS count */
+                    else if (strncmp(nmea_buf, "$GPGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GLGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GAGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GBGSV", 6) == 0 ||
+                             strncmp(nmea_buf, "$GNGSV", 6) == 0) {
+                        static uint8_t gsv_gp = 0, gsv_gl = 0, gsv_ga = 0, gsv_gb = 0;
+                        if (strncmp(nmea_buf, "$GPGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gp = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GLGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gl = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GAGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_ga = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GBGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gb = (uint8_t)atoi(f[3]);
+                        } else if (strncmp(nmea_buf, "$GNGSV", 6) == 0) {
+                            if (f_idx > 3 && f[3] && *f[3]) gsv_gp = (uint8_t)atoi(f[3]);
+                        }
+                        uint16_t total_view = (uint16_t)gsv_gp + gsv_gl + gsv_ga + gsv_gb;
+                        if (total_view > 99) total_view = 99;
+                        if (g_gps.fix == 0) {
+                            g_gps.sats = (uint8_t)total_view;
+                        }
                         g_gps.last_ms = now ? now : 1;
                     }
                 }
@@ -544,6 +594,15 @@ void app_loop(void)
                 g_env.iaq = iaq;
                 g_env.iaq_accuracy = iaq_acc;
                 send_env(now);
+            }
+        }
+    } else {
+        static uint32_t last_bme_retry = 0;
+        if (now - last_bme_retry >= 2500) {
+            last_bme_retry = now;
+            if (bme_port_init() == 0) {
+                g_bme_ok = 1;
+                printf("\r\n*** BME688 DETECTED & INITIALIZED! ***\r\n");
             }
         }
     }

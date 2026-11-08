@@ -3,12 +3,14 @@
 static int decode(ld_parser_t *p, ld_target_t *o, uint32_t now)
 {
     const uint8_t *d = p->buf;
-    if (p->len < 9 || d[0] != 0x02 || d[1] != 0xAA) return 0;   /* basic target info only */
-    o->state   = d[2];
-    o->mov_cm  = (uint16_t)(d[3] | (d[4] << 8));
-    o->mov_e   = d[5];
-    o->stat_cm = (uint16_t)(d[6] | (d[7] << 8));
-    o->stat_e  = d[8];
+    /* HLK-LD2412 datasheet frame header: 0xFD 0x02 0x01 0x04 */
+    if (p->len < 11 ||
+        d[0] != 0xFD || d[1] != 0x02 || d[2] != 0x01 || d[3] != 0x04) return 0;
+    o->state   = d[4];
+    o->mov_cm  = (uint16_t)(d[5] | (d[6] << 8));
+    o->mov_e   = d[7];
+    o->stat_cm = (uint16_t)(d[8] | (d[9] << 8));
+    o->stat_e  = d[10];
     o->t_ms    = now ? now : 1;
     return 1;
 }

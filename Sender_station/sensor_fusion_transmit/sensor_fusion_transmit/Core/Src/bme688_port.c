@@ -6,6 +6,9 @@
 #include <string.h>
 
 extern I2C_HandleTypeDef hi2c1;
+extern I2C_HandleTypeDef hi2c2;
+extern I2C_HandleTypeDef hi2c3;
+static I2C_HandleTypeDef *bme_i2c = &hi2c1;
 static struct bme68x_dev bme;
 static struct bme68x_conf conf;
 static struct bme68x_heatr_conf hc;
@@ -15,12 +18,12 @@ static uint32_t meas_ms;
 static BME68X_INTF_RET_TYPE rd(uint8_t reg, uint8_t *d, uint32_t len, void *p)
 {
     uint8_t a = *(uint8_t *)p;
-    return HAL_I2C_Mem_Read(&hi2c1, (uint16_t)(a << 1), reg, I2C_MEMADD_SIZE_8BIT, d, (uint16_t)len, 100) == HAL_OK ? 0 : -1;
+    return HAL_I2C_Mem_Read(bme_i2c, (uint16_t)(a << 1), reg, I2C_MEMADD_SIZE_8BIT, d, (uint16_t)len, 100) == HAL_OK ? 0 : -1;
 }
 static BME68X_INTF_RET_TYPE wr(uint8_t reg, const uint8_t *d, uint32_t len, void *p)
 {
     uint8_t a = *(uint8_t *)p;
-    return HAL_I2C_Mem_Write(&hi2c1, (uint16_t)(a << 1), reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)d, (uint16_t)len, 100) == HAL_OK ? 0 : -1;
+    return HAL_I2C_Mem_Write(bme_i2c, (uint16_t)(a << 1), reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)d, (uint16_t)len, 100) == HAL_OK ? 0 : -1;
 }
 static void dly(uint32_t us, void *p)
 {
@@ -35,14 +38,20 @@ int bme_port_init(void)
     DWT->LAR = 0xC5ACCE55;                       /* unlock DWT on Cortex-M7 */
     DWT->CYCCNT = 0; DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
+    I2C_HandleTypeDef *buses[3] = { &hi2c1, &hi2c2, &hi2c3 };
     static const uint8_t addrs[2] = { BME68X_I2C_ADDR_LOW, BME68X_I2C_ADDR_HIGH };  /* 0x76, 0x77 */
     int8_t r = -1;
-    for (int i = 0; i < 2 && r != BME68X_OK; i++) {
-        i2c_addr = addrs[i];
-        memset(&bme, 0, sizeof bme);
-        bme.intf = BME68X_I2C_INTF; bme.read = rd; bme.write = wr; bme.delay_us = dly;
-        bme.intf_ptr = &i2c_addr; bme.amb_temp = 25;
-        r = bme68x_init(&bme);
+
+    for (int b = 0; b < 3 && r != BME68X_OK; b++) {
+        if (!buses[b]->Instance) continue;
+        bme_i2c = buses[b];
+        for (int i = 0; i < 2 && r != BME68X_OK; i++) {
+            i2c_addr = addrs[i];
+            memset(&bme, 0, sizeof bme);
+            bme.intf = BME68X_I2C_INTF; bme.read = rd; bme.write = wr; bme.delay_us = dly;
+            bme.intf_ptr = &i2c_addr; bme.amb_temp = 25;
+            r = bme68x_init(&bme);
+        }
     }
     if (r != BME68X_OK) return -1;
 
