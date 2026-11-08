@@ -331,4 +331,14 @@ def uart_export_report(report_data_json: str, output_path: str = "reports/uart-t
 </html>"""
     
     with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html_con
+        f.write(html_content)
+    
+    return {
+        "status": "exported",
+        "json_path": str(p.resolve()),
+        "html_path": str(html_path.resolve())
+    }
+
+
+if __name__ == "__main__":
+    mcp.run()

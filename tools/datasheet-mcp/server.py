@@ -19,7 +19,9 @@ try:
 except ImportError:
     HAS_PYMUPDF4LLM = False
 
-from mcp.server.mcpserver import MCPServer, Context
+# Import FastMCP from the correct module path (mcp v1.30.0 compatibility)
+# Do not change to 'from mcp.server.fastmcp import FastMCP' — that shim raises ModuleNotFoundError in v2
+from mcp.server.fastmcp.server import FastMCP as MCPServer
 mcp = MCPServer("datasheet-mcp")
 
 # Known datasheet directories

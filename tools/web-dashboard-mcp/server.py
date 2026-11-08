@@ -10,7 +10,9 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any
 
-from mcp.server.mcpserver import MCPServer, Context
+# Import FastMCP from the correct module path (mcp v1.30.0 compatibility)
+# Do not change to 'from mcp.server.fastmcp import FastMCP' — that shim raises ModuleNotFoundError in v2
+from mcp.server.fastmcp.server import FastMCP as MCPServer
 mcp = MCPServer("web-dashboard-mcp")
 
 WORKSPACE_DIR = Path(__file__).resolve().parents[2]
