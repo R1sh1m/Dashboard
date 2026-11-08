@@ -99,3 +99,14 @@ gdb_cmd*.txt
 sx126*.diff
 *DESIGN.md
 design*.md
+
+# Project Config Files (local/personal)
+package.json
+package-lock.json
+tsconfig.json
+tsconfig.*.json
+vite.config.*
+vitest.config.*
+playwright.config.*
+esp_receiver/sdkconfig
+esp_receiver/sdkconfig.defaults
