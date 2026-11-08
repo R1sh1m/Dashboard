@@ -300,7 +300,7 @@ def uart_export_report(report_data_json: str, output_path: str = "reports/uart-t
     <meta charset="utf-8">
     <title>STM32 HIL Test Report</title>
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 24px; }}
+        body {{ font-family: system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 24px; }}
         .card {{ background: #1e293b; border-radius: 8px; padding: 24px; border: 1px solid #334155; max-width: 900px; margin: 0 auto; }}
         .badge {{ background: {bg_color}; color: white; padding: 4px 12px; border-radius: 9999px; font-weight: bold; display: inline-block; }}
         table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}

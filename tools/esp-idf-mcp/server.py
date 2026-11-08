@@ -58,10 +58,23 @@ def esp_build() -> Dict[str, Any]:
         return {"status": "error", "message": f"Build directory not found at {BUILD_DIR}"}
 
     try:
+        env = os.environ.copy()
+        try:
+            ccache_dir = str(next((ESPRESSIF_HOME / "tools" / "ccache").glob("**/ccache.exe")).parent)
+            env["PATH"] = f"{ccache_dir};{env.get('PATH', '')}"
+        except (StopIteration, Exception):
+            pass
+        try:
+            xtensa_dir = str(next((ESPRESSIF_HOME / "tools" / "xtensa-esp-elf").glob("**/xtensa-esp32-elf-gcc.exe")).parent)
+            env["PATH"] = f"{xtensa_dir};{env.get('PATH', '')}"
+        except (StopIteration, Exception):
+            pass
+
         proc = subprocess.run(
             [str(NINJA_PATH), "-C", str(BUILD_DIR)],
             capture_output=True,
             text=True,
+            env=env,
             timeout=180
         )
         return {
