@@ -39,6 +39,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin == LORA_DIO1_Pin) radio_dio1_
 
 /* ------------------------------------------------------------------ state */
 static ubx_parser_t ubx; static gps_data_t g_gps;
+static uint8_t g_ubx_nav_pvt_seen;
 /* NMEA sentence collection buffer (NEO-M8N defaults to NMEA output) */
 static char nmea_buf[120]; static uint8_t nmea_len; static bool nmea_in_msg;
 static ld_parser_t  ldp; static ld_target_t g_rad;
@@ -291,7 +292,7 @@ static void send_telemetry(uint32_t now)
 /* ------------------------------------------------------------------ GPS config (UBX) */
 static void ubx_tx(uint8_t cls, uint8_t id, const uint8_t *pl, uint16_t len)
 {
-    uint8_t b[64]; size_t n = ubx_build(b, cls, id, pl, len);
+    uint8_t b[96]; size_t n = ubx_build(b, cls, id, pl, len);
     HAL_UART_Transmit(&huart2, b, (uint16_t)n, 100); HAL_Delay(25);
 }
 
@@ -315,21 +316,66 @@ static int ubx_wait_ack(uint8_t cls, uint8_t id)
 static void gps_configure(void)
 {
     /* Keep UART2 at 9600 baud (u-blox factory default) */
-    /* 1. CFG-MSG: Enable NAV-PVT at 1 per navigation cycle on UART1 */
-    const uint8_t pvt[7]  = { 0x01, 0x07, 0, 1, 0, 0, 0 };
-    /* 2. CFG-MSG: Enable NAV-DOP at 1 per navigation cycle on UART1 */
-    const uint8_t dop[7]  = { 0x01, 0x04, 0, 1, 0, 0, 0 };
+    /* 1. CFG-MSG: Enable NAV-PVT at 1 per navigation cycle on UART1 (8 bytes) */
+    const uint8_t pvt[8]  = { 0x01, 0x07, 0, 1, 0, 0, 0, 0 };
+    /* 2. CFG-MSG: Enable NAV-DOP at 1 per navigation cycle on UART1 (8 bytes) */
+    const uint8_t dop[8]  = { 0x01, 0x04, 0, 1, 0, 0, 0, 0 };
     /* 3. CFG-RATE: 1000 ms (1 Hz) measurement rate for fast, sensitive satellite lock */
     const uint8_t rate[6] = { 0xE8, 0x03, 0x01, 0x00, 0x01, 0x00 };
-    /* 4. CFG-NAV5: dynModel = portable (0) for fast acquisition / low thresholds */
-    uint8_t nav5[36]      = { 0x01, 0x00, 0 };
+    /* 4. CFG-NAV5: Window / degraded environment navigation engine configuration (36 bytes):
+     *    mask: 0x0117 (apply dynModel, minEl, posFixMode, pDop, cnoThreshold)
+     *    dynModel: 0 (Portable - lowest motion filter thresholds)
+     *    fixMode: 3 (Auto 2D/3D - allows 2D fix with 3 satellites)
+     *    minElev: 0 degrees (allows low-elevation horizon satellites through window)
+     *    pDop: 500 (50.0 PDOP limit; allows window geometry where satellites are only on 1 side)
+     *    cnoThresh: 0 dB-Hz (disables SNR floor filter so weak window signals are accepted)
+     *    cnoThreshNumSVs: 0 (no satellite count threshold) */
+    uint8_t nav5[36] = { 0 };
+    nav5[0] = 0x17; nav5[1] = 0x01;
+    nav5[2] = 0x00;
+    nav5[3] = 0x03;
+    nav5[12] = 0x00;
+    nav5[14] = 0xC8; nav5[15] = 0x00;
+    nav5[24] = 0x00;
+    nav5[25] = 0x00;
 
-    int ok = 1;
-    ubx_tx(0x06, 0x01, pvt, 7);  ok &= ubx_wait_ack(0x06, 0x01);
-    ubx_tx(0x06, 0x01, dop, 7);  ok &= ubx_wait_ack(0x06, 0x01);
-    ubx_tx(0x06, 0x08, rate, 6); ok &= ubx_wait_ack(0x06, 0x08);
-    ubx_tx(0x06, 0x24, nav5, 36);ok &= ubx_wait_ack(0x06, 0x24);
-    printf("GPS config %s\r\n", ok ? "ACK" : "NAK/TIMEOUT");
+    /* 5. CFG-NAVX5: Enable AssistNow Autonomous (AOP) for rapid indoor/window TTFF (40 bytes):
+     *    mask1: 0x4000 (apply aopCfg) at offset 2
+     *    aopCfg: 0x01 (useAOP = 1) at offset 27 */
+    uint8_t navx5[40] = { 0 };
+    navx5[2] = 0x00; navx5[3] = 0x40;
+    navx5[27] = 0x01;
+
+    struct { uint8_t cls, id; const uint8_t *pl; uint16_t len; } cmds[5] = {
+        { 0x06, 0x01, pvt,  8 },
+        { 0x06, 0x01, dop,  8 },
+        { 0x06, 0x08, rate, 6 },
+        { 0x06, 0x24, nav5, 36 },
+        { 0x06, 0x23, navx5, 40 },
+    };
+
+    /* Retry the full configuration sequence until every command is ACKed.
+     * The window-optimized CFG-NAV5 (minElev=0 deg, cnoThresh=0) must take
+     * effect so low-elevation / weak satellites are not masked out; otherwise
+     * the module can report satellites in view (S21) while staying at fix 0
+     * (F0) because the default 10 deg elevation mask excludes them. */
+    int acked[5] = {0};
+    int all_ok = 0;
+    for (uint32_t attempt = 1; attempt <= 3u && !all_ok; attempt++) {
+        for (int i = 0; i < 5; i++) {
+            if (acked[i]) continue;   /* already ACKed on a previous attempt */
+            ubx_tx(cmds[i].cls, cmds[i].id, cmds[i].pl, cmds[i].len);
+            acked[i] = ubx_wait_ack(cmds[i].cls, cmds[i].id);
+        }
+        all_ok = 1;
+        for (int i = 0; i < 4; i++) all_ok &= acked[i]; /* 0..3 (PVT, DOP, RATE, NAV5) are essential */
+        printf("[GPS] cfg attempt %lu/%lu: pvt=%d dop=%d rate=%d nav5=%d aop=%d %s\r\n",
+               (unsigned long)attempt, (unsigned long)3u,
+               acked[0], acked[1], acked[2], acked[3], acked[4],
+               all_ok ? "OK" : "retrying");
+        if (!all_ok && attempt < 3u) HAL_Delay(500);
+    }
+    printf("[GPS] configuration %s\r\n", all_ok ? "applied (all ACKs received)" : "INCOMPLETE (some ACKs missing)");
 }
 
 /* ------------------------------------------------------------------ LCD */
@@ -342,8 +388,8 @@ static void lcd_update(uint32_t now)
         snprintf(a, sizeof a, "F%u S%02u TX%04u", g_gps.fix, g_gps.sats, g_tx_count);
     }
 
-    /* Row 1: If GPS has valid fix, alternate every 3 seconds between Environmental and Coordinates */
-    if (g_gps.fix >= 2 && ((now / 3000u) & 1)) {
+    /* Row 1: If coordinates exist, alternate every 3 seconds between Environmental and Coordinates */
+    if ((g_gps.lat_e7 != 0 && g_gps.lon_e7 != 0) && ((now / 3000u) & 1)) {
         int32_t lat = g_gps.lat_e7;
         int32_t lon = g_gps.lon_e7;
         char lat_c = (lat >= 0) ? 'N' : 'S';
@@ -407,6 +453,9 @@ void app_init(void)
     }
     int r = radio_init();                printf("SX1262 %s\r\n", r == 0 ? "ok" : "FAIL");
     if (r == 0) radio_start_rx();
+    __HAL_UART_CLEAR_OREFLAG(&huart2);
+    __HAL_UART_CLEAR_FEFLAG(&huart2);
+    __HAL_UART_CLEAR_NEFLAG(&huart2);
     HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
     gps_configure();
@@ -504,15 +553,22 @@ void app_loop(void)
                         /* f[0]=sentence, f[1]=time, f[2]=lat, f[3]=N/S, f[4]=lon, f[5]=E/W, f[6]=fix, f[7]=sats */
                         if (f_idx > 6 && f[6] && *f[6]) {
                             uint8_t q = (uint8_t)atoi(f[6]);
-                            if (q > 0) {
-                                g_gps.fix = (q == 1) ? 3 : (q == 2 ? 4 : q);
-                            } else {
-                                g_gps.fix = 0;
+                            if (!g_ubx_nav_pvt_seen && q > 0) {
+                                /* GGA quality does not distinguish 2D/3D. */
+                                g_gps.fix = 2;
+                                g_gps.last_fix_ms = now ? now : 1;
+                            } else if (!g_ubx_nav_pvt_seen) {
+                                /* Holdover: maintain 2D fix for GPS_HOLDOVER_MS if satellites fluctuate at window */
+                                if (g_gps.last_fix_ms && (now - g_gps.last_fix_ms < GPS_HOLDOVER_MS)) {
+                                    if (g_gps.fix < 2) g_gps.fix = 2; /* 2D holdover */
+                                } else {
+                                    g_gps.fix = 0;
+                                }
                             }
                         }
                         if (f_idx > 7 && f[7] && *f[7]) {
                             uint8_t used = (uint8_t)atoi(f[7]);
-                            if (used > 0 || g_gps.fix > 0) g_gps.sats = used;
+                            if (!g_ubx_nav_pvt_seen && (used > 0 || g_gps.fix > 0)) g_gps.sats = used;
                         }
                         if (f_idx > 3 && f[2] && *f[2] && f[3] && *f[3]) {
                             g_gps.lat_e7 = parse_nmea_coord(f[2], *f[3], 0);
@@ -531,16 +587,17 @@ void app_loop(void)
                     }
                     else if (strncmp(nmea_buf, "$GPRMC", 6) == 0 || strncmp(nmea_buf, "$GNRMC", 6) == 0) {
                         /* f[2]=status ('A'=valid, 'V'=warning) */
-                        if (f_idx > 2 && f[2] && *f[2] == 'A') {
-                            if (g_gps.fix == 0) g_gps.fix = 3;
+                        if (!g_ubx_nav_pvt_seen && f_idx > 2 && f[2] && *f[2] == 'A') {
+                            if (g_gps.fix == 0) g_gps.fix = 2;
+                            g_gps.last_fix_ms = now ? now : 1;
                         }
                         /* f[7]=speed_knots, f[8]=cog_degrees */
-                        if (f_idx > 7 && f[7] && *f[7]) {
+                        if (!g_ubx_nav_pvt_seen && f_idx > 7 && f[7] && *f[7]) {
                             /* knots * 51.4444 cm/s */
                             int32_t k100 = parse_fixed(f[7], 2);
                             g_gps.speed_cms = (uint16_t)((k100 * 5144LL) / 10000LL);
                         }
-                        if (f_idx > 8 && f[8] && *f[8]) {
+                        if (!g_ubx_nav_pvt_seen && f_idx > 8 && f[8] && *f[8]) {
                             g_gps.hdg_cdeg = (uint16_t)parse_fixed(f[8], 2);
                         }
                         g_gps.last_ms = now ? now : 1;
@@ -564,7 +621,7 @@ void app_loop(void)
                         }
                         uint16_t total_view = (uint16_t)gsv_gp + gsv_gl + gsv_ga + gsv_gb;
                         if (total_view > 99) total_view = 99;
-                        if (g_gps.fix == 0) {
+                        if (!g_ubx_nav_pvt_seen && g_gps.fix == 0 && total_view > 0) {
                             g_gps.sats = (uint8_t)total_view;
                         }
                         g_gps.last_ms = now ? now : 1;
@@ -577,7 +634,9 @@ void app_loop(void)
             }
         }
         /* ---- UBX binary parsing (fallback if module switched to UBX) ---- */
-        ubx_feed(&ubx, c, &g_gps, now);
+        if (ubx_feed(&ubx, c, &g_gps, now)) {
+            g_ubx_nav_pvt_seen = 1;
+        }
     }
     while (rb_get(&ld_rb, &c))
         if (ld_feed(&ldp, c, &g_rad, now)) {                  /* event-driven radar alert */
@@ -608,8 +667,8 @@ void app_loop(void)
                        g_env.hum_c100 / 100, g_env.hum_c100 % 100,
                        g_env.press_dhpa / 10);
                 /* Compute IAQ via BSEC */
-                uint16_t iaq = 0xFFFF;
-                uint8_t iaq_acc = 0;
+                uint16_t iaq = g_env.iaq;
+                uint8_t iaq_acc = g_env.iaq_accuracy;
                 float temp = g_env.temp_c100 / 100.0f;
                 float hum = g_env.hum_c100 / 100.0f;
                 float press = g_env.press_dhpa * 100.0f;   /* dhPa -> Pa */
@@ -642,6 +701,18 @@ void app_loop(void)
         gps_log_t = now;
         printf("[STATUS] fix=%u sats=%u lat=%ld lon=%ld alt=%ldcm | TX=%u drops=%u\r\n",
                g_gps.fix, g_gps.sats, (long)g_gps.lat_e7, (long)g_gps.lon_e7, (long)g_gps.alt_cm, g_tx_count, g_drops);
+    }
+    /* Auto-recovery: if GPS fix stays at 0 for > 30 seconds (or after boot at window),
+     * automatically re-apply the window-optimized UBX acquisition settings. */
+    static uint32_t last_gps_reconfig = 0;
+    if (g_gps.fix == 0) {
+        if (now - last_gps_reconfig >= 120000u) {
+            last_gps_reconfig = now;
+            printf("[GPS] Auto-recovery: fix=0 at window, re-applying acquisition configuration...\r\n");
+            gps_configure();
+        }
+    } else {
+        last_gps_reconfig = now;
     }
     if (now - t_hb  >= HEARTBEAT_MS) { t_hb  = now; send_status(now); }
     if (now - t_pwr >= POWER_MS)     { t_pwr = now; send_power(now); }

@@ -17,7 +17,7 @@ cd /d "%~dp0Debug"
 REM Clean
 echo Cleaning...
 del /Q *.elf *.map *.list *.stdout 2>nul
-for /d %%d in (..\Core\Src ..\Core\Startup ..\Drivers\STM32F7xx_HAL_Driver\Src ..\sx126x_driver\src) do (
+for /d %%d in (..\Core\Src ..\Core\Startup ..\Drivers\STM32F7xx_HAL_Driver\Src ..\sx126x_driver\src ..\Core\Inc\bsec\config) do (
     if exist "%%d" del /Q "%%d\*.o" "%%d\*.d" 2>nul
 )
 
@@ -31,7 +31,7 @@ for %%f in (..\Core\Src\*.c) do (
 )
 
 echo Compiling bsec_config...
-arm-none-eabi-gcc -c ..\Core\Inc\bsec\config\bsec_config.c -o ..\Core\Inc\bsec\config\bsec_config.o -I"..\Core\Inc" -I"..\Core\Inc\bsec" -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-sp-d16 -mthumb -O2 -Wall -fdata-sections -ffunction-sections -std=c99
+arm-none-eabi-gcc -c ..\Core\Inc\bsec\config\bsec_config.c -o ..\Core\Inc\bsec\config\bsec_config.o -I"..\Core\Inc" -I"..\Core\Inc\bsec" -I"..\Core\Inc\bsec\config" -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-sp-d16 -mthumb -O2 -Wall -fdata-sections -ffunction-sections -std=c99
 
 echo Compiling bsec_wrapper...
 arm-none-eabi-gcc -c ..\Core\Src\bsec_wrapper.c -o ..\Core\Src\bsec_wrapper.o -I"..\Core\Inc" -I"..\Core\Inc\bsec" -I"..\App\Inc" -I"..\Drivers\STM32F7xx_HAL_Driver\Inc" -I"..\Drivers\STM32F7xx_HAL_Driver\Inc\Legacy" -I"..\Drivers\CMSIS\Include" -I"..\Drivers\CMSIS\Device\ST\STM32F7xx\Include" -I"..\sx126x_driver\src" -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-sp-d16 -mthumb -O2 -Wall -fdata-sections -ffunction-sections -std=c99 -DUSE_HAL_DRIVER -DSTM32F722xx
@@ -59,6 +59,7 @@ arm-none-eabi-gcc -o sensor_fusion_transmit.elf ^
     ..\Core\Src\system_stm32f7xx.o ^
     ..\Core\Src\bme68x.o ^
     ..\Core\Src\bsec_wrapper.o ^
+    ..\Core\Inc\bsec\config\bsec_config.o ^
     ..\Core\Src\syscalls.o ^
     ..\Core\Src\sysmem.o ^
     ..\Core\Startup\startup_stm32f722zetx.o ^

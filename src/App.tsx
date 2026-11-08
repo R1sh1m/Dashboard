@@ -67,6 +67,7 @@ export function App() {
   // Previous GPS position, touched only in GPS reception callbacks, used to
   // derive STANDBY vs WALKING solely from GPS sensor data (position changing).
   const prevGpsPos = useRef<{ lat: number; lng: number } | null>(null);
+  const lastTelemetryPacketAt = useRef<number | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const mapRef = useRef<MapViewHandle>(null);
 
@@ -95,6 +96,7 @@ export function App() {
   }, [addLog]);
 
   const handleIncomingPacket = useCallback((packet: TelemetryPacket) => {
+    lastTelemetryPacketAt.current = Date.now();
     setTelemetry(packet);
     setGpsData(packet.gps);
     setLastPacketTime(Date.now());
@@ -162,6 +164,14 @@ export function App() {
   }, [addLog]);
 
   const handleIncomingGps = useCallback((gps: GpsData) => {
+    /*
+     * The ground bridge emits authoritative JSON telemetry. Raw NMEA may
+     * arrive on a direct GPS connection too, but must not overwrite a newer
+     * packet with partial fields such as sats=0 or hdop=99.
+     */
+    if (lastTelemetryPacketAt.current !== null && Date.now() - lastTelemetryPacketAt.current < 2000) {
+      return;
+    }
     setGpsData(gps);
     setTelemetry((current) => current ? { ...current, gps } : current);
     if (gps.lat !== 0 && gps.lng !== 0) {

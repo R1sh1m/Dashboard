@@ -1,5 +1,6 @@
 #include "gps_ubx.h"
 #include "stm32f7xx_hal.h"
+#include <stdio.h>
 
 static uint16_t u2(const uint8_t *p){ return (uint16_t)(p[0] | (p[1] << 8)); }
 static int32_t  i4(const uint8_t *p){ return (int32_t)((uint32_t)p[0] | ((uint32_t)p[1] << 8) |
@@ -32,16 +33,41 @@ static int handle(ubx_parser_t *p, gps_data_t *g, uint32_t now)
     if (p->cls == 0x01 && p->id == 0x07 && p->len == 92) {          /* NAV-PVT */
         const uint8_t *d = p->buf;
         uint8_t fixType = d[20], flags = d[21];
-        /* If module has 2D (2) or 3D (3) fix, accept it even if gnssFixOK is pending strict DOP */
+        /*
+         * fixType describes the solution mode, while gnssFixOK is the
+         * receiver's validity decision.  A receiver can report fixType=3
+         * while still rejecting the solution because its geometry or signal
+         * quality is insufficient.
+         */
         if (fixType >= 2) {
+            /*
+             * Accept 2D/3D fix based on fixType alone; do not require the
+             * gnssFixOK flag.  At marginal positions (e.g. window with
+             * satellites on one side of sky) the NEO-M8N can report
+             * fixType=3 while gnssFixOK is unset due to insufficient
+             * geometry/DOP.  Trust fixType and use the solution.
+             */
             g->fix = fixType;
+            g->last_fix_ms = now ? now : 1;
+            g->lon_e7 = i4(d + 24);
+            g->lat_e7 = i4(d + 28);
+            g->alt_cm = i4(d + 36) / 10;
+            g->sats = d[23];
         } else {
-            g->fix = (flags & 0x01) ? fixType : 0;
+            /*
+             * No valid fix this cycle.  Preserve the last coordinates for
+             * last-known-location display, but never preserve the validity
+             * bit.  Holdover: if we have valid coordinates from a previous
+             * fix, keep fix=1 (2D holdover) instead of dropping to 0, so
+             * the ground station doesn't lose position during brief
+             * geometry outages at the window.
+             */
+            g->fix = 0;
+            if (g->lat_e7 != 0 && g->lon_e7 != 0 && g->last_fix_ms) {
+                g->fix = 1;  /* 2D holdover */
+            }
+            if (d[23] > 0) g->sats = d[23];
         }
-        g->sats = d[23];
-        g->lon_e7 = i4(d + 24);
-        g->lat_e7 = i4(d + 28);
-        g->alt_cm = i4(d + 36) / 10;                                  /* hMSL mm -> cm */
         int32_t gs = i4(d + 60) / 10;                                 /* mm/s -> cm/s */
         g->speed_cms = (uint16_t)(gs < 0 ? 0 : (gs > 65535 ? 65535 : gs));
         int32_t hd = i4(d + 64) / 1000;                               /* 1e-5 deg -> cdeg */
@@ -55,9 +81,14 @@ static int handle(ubx_parser_t *p, gps_data_t *g, uint32_t now)
     }
     /* UBX-ACK-ACK (0x05 0x01): acknowledge of a CFG command. */
     if (p->cls == 0x05 && p->id == 0x01 && p->len == 2) {
+        printf("[UBX-ACK] cls=0x%02X id=0x%02X\r\n", p->buf[0], p->buf[1]);
         ack_cls = p->buf[0]; ack_id = p->buf[1]; ack_got = 1;
         if (p->buf[0] == 0x06 && p->buf[1] == 0x00)   /* ACK for CFG-PRT */
             g_cfg_prt_acked = 1;
+    }
+    /* UBX-ACK-NAK (0x05 0x00): reject of a CFG command. */
+    if (p->cls == 0x05 && p->id == 0x00 && p->len == 2) {
+        printf("[UBX-NAK] cls=0x%02X id=0x%02X\r\n", p->buf[0], p->buf[1]);
     }
     return 0;
 }

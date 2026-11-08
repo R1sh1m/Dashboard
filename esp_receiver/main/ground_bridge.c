@@ -291,7 +291,7 @@ static void emit_json(void)
     uint32_t uptime_sec = (shadow.telem_t != 0) ? shadow.telem.uptime_s : (uint32_t)(now / 1000);
     
     /* IAQ: reject STM32 0xFFFF placeholder (no valid gas sensor reading) */
-    uint32_t iaq_val = (shadow.env.iaq == 0xFFFF) ? 0u : (uint32_t)(shadow.env.iaq / 10);
+    uint32_t iaq_val = (shadow.env.iaq == 0xFFFF) ? 0u : (uint32_t)shadow.env.iaq;
     
     /* Env validity: requires non-zero sensor reading (atmospheric pressure >= 300 hPa / 3000 dhPa) */
     uint8_t is_env_valid = (env_valid && shadow.env.press_dhpa >= 3000u) ? 1u : 0u;

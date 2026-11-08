@@ -13,13 +13,17 @@ from typing import Optional, Dict, Any, List
 import serial
 import serial.tools.list_ports
 
-# Import FastMCP from the correct module path (mcp v1.30.0 compatibility)
-# Do not change to 'from mcp.server.fastmcp import FastMCP' — that shim raises ModuleNotFoundError in v2
-from mcp.server.fastmcp.server import FastMCP as MCPServer
+try:
+    from mcp.server.mcpserver import MCPServer  # pyright: ignore[reportMissingImports]
+except ImportError:
+    try:
+        from mcp.server.fastmcp import FastMCP as MCPServer  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+    except ImportError:
+        raise
 mcp = MCPServer("esp-idf-mcp")
 
 WORKSPACE_DIR = Path(__file__).resolve().parents[2]
-BUILD_DIR = WORKSPACE_DIR / "build" if (WORKSPACE_DIR / "build").exists() else WORKSPACE_DIR / "esp_receiver" / "build"
+BUILD_DIR = WORKSPACE_DIR / "esp_receiver" / "build"
 ESPRESSIF_HOME = Path.home() / ".espressif"
 NINJA_PATH = ESPRESSIF_HOME / "tools" / "ninja" / "1.12.1" / "ninja.exe"
 PYTHON_IDF = ESPRESSIF_HOME / "python_env" / "idf6.0_py3.13_env" / "Scripts" / "python.exe"
@@ -69,6 +73,8 @@ def esp_build() -> Dict[str, Any]:
             env["PATH"] = f"{xtensa_dir};{env.get('PATH', '')}"
         except (StopIteration, Exception):
             pass
+        if PYTHON_IDF.exists():
+            env["PATH"] = f"{PYTHON_IDF.parent};{env.get('PATH', '')}"
 
         proc = subprocess.run(
             [str(NINJA_PATH), "-C", str(BUILD_DIR)],

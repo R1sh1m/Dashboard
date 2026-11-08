@@ -8,7 +8,7 @@ describe('parseNmeaSentence', () => {
     expect(gps).not.toBeNull();
     expect(gps?.lat).toBeCloseTo(48.1173, 5);
     expect(gps?.lng).toBeCloseTo(11.5166666667, 5);
-    expect(gps).toMatchObject({ alt_m: 545.4, fix: 1, sats: 8, hdop: 0.9, valid: true });
+    expect(gps).toMatchObject({ alt_m: 545.4, fix: 2, sats: 8, hdop: 0.9, valid: true });
   });
 
   it('parses a GGA sentence without a checksum', () => {
@@ -22,7 +22,7 @@ describe('parseNmeaSentence', () => {
     expect(gps).not.toBeNull();
     expect(gps?.lat).toBeCloseTo(48.1173, 5);
     expect(gps?.lng).toBeCloseTo(11.5166666667, 5);
-    expect(gps?.fix).toBe(1);
+    expect(gps?.fix).toBe(2);
     expect(gps?.speed_mps).toBeCloseTo(0, 5);
     expect(gps?.heading_deg).toBeCloseTo(0, 5);
     expect(gps?.valid).toBe(true);
@@ -67,6 +67,14 @@ describe('parseNmeaSentence', () => {
 
   it('rejects invalid checksums', () => {
     expect(parseNmeaSentence('$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*00')).toBeNull();
+  });
+
+  it('rejects malformed checksum fields', () => {
+    expect(parseNmeaSentence('$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*4')).toBeNull();
+  });
+
+  it('rejects coordinates with invalid minute fields', () => {
+    expect(parseNmeaSentence('$GPGGA,123519,4860.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,')).toBeNull();
   });
 
   it('rejects unsupported sentence types', () => {

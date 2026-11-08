@@ -153,6 +153,14 @@ def uart_read(max_bytes: int = 1024, timeout_sec: float = 2.0) -> Dict[str, Any]
             "text": decoded,
             "hex": raw_data.hex()
         }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"UART read failed: {e}",
+            "bytes_read": 0,
+            "text": "",
+            "hex": ""
+        }
     finally:
         active_conn.timeout = old_timeout
 
@@ -173,7 +181,18 @@ def uart_expect(expected_pattern: str, timeout_sec: float = 3.0, command_to_send
     
     start_time = time.time()
     accumulated = ""
-    pattern = re.compile(expected_pattern)
+    try:
+        pattern = re.compile(expected_pattern)
+    except re.error as e:
+        return {
+            "status": "error",
+            "message": f"Invalid regex pattern: {e}",
+            "matched": False,
+            "pattern": expected_pattern,
+            "groups": [],
+            "elapsed_sec": 0.0,
+            "received_buffer": "",
+        }
     matched = False
     groups = []
     
@@ -274,8 +293,11 @@ def uart_export_report(report_data_json: str, output_path: str = "reports/uart-t
     p.parent.mkdir(parents=True, exist_ok=True)
     
     # Save JSON
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to write JSON report: {e}"}
     
     # Generate HTML
     html_path = p.with_suffix(".html")
@@ -330,8 +352,11 @@ def uart_export_report(report_data_json: str, output_path: str = "reports/uart-t
 </body>
 </html>"""
     
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    try:
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to write HTML report: {e}"}
     
     return {
         "status": "exported",
@@ -341,4 +366,9 @@ def uart_export_report(report_data_json: str, output_path: str = "reports/uart-t
 
 
 if __name__ == "__main__":
-    mcp.run()
+    try:
+        mcp.run()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

@@ -90,7 +90,5 @@ int bme_port_read(bme_sample_t *s)
 #endif
     s->gas_valid = (d.status & BME68X_GASM_VALID_MSK) ? 1 : 0;
     s->heat_stab = (d.status & BME68X_HEAT_STAB_MSK) ? 1 : 0;
-    s->iaq = 0xFFFF;
-    s->iaq_accuracy = 0;
     return 0;
 }

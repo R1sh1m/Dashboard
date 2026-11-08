@@ -54,6 +54,8 @@ $INCLUDES = @(
     "-I$DRIVERS_DIR/CMSIS/Include"
     "-I$DRIVERS_DIR/CMSIS/Device/ST/STM32F7xx/Include"
     "-I$SX126X_DIR"
+    "-I$INC_DIR/bsec"
+    "-I$INC_DIR/bsec/config"
 )
 
 # Source files
@@ -70,9 +72,11 @@ $CSOURCES = @(
     "$SRC_DIR/syscalls.c"
     "$SRC_DIR/sysmem.c"
     "$SRC_DIR/app.c"
+    "$SRC_DIR/bsec_wrapper.c"
     "$SRC_DIR/lcd_i2c.c"
     "$SRC_DIR/proto.c"
     "$SRC_DIR/lora_radio.c"
+    "$INC_DIR/bsec/config/bsec_config.c"
 )
 
 $ASOURCES = @(
@@ -185,6 +189,7 @@ $linkArgs = @(
     "-Wl,--start-group"
     "-lc"
     "-lm"
+    "$PROJECT/Core/Lib/bsec/libalgobsec.a"
     "-Wl,--end-group"
     "-o$ELF"
 )

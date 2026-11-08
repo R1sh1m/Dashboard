@@ -4,12 +4,15 @@
 #include <stddef.h>
 #include "stm32f7xx_hal.h"
 #define UBX_MAX_PL 100u
+#define GPS_HOLDOVER_MS 10000u /* 10-second fix holdover protects window/indoor signal fluctuations */
 
 typedef struct {
     int32_t lat_e7, lon_e7, alt_cm;
     uint16_t speed_cms, hdg_cdeg;
     uint8_t fix, sats, hdop_x10;
+    uint8_t tracked_sats;           /* actively tracked satellites (SNR > 0) */
     uint32_t last_ms;               /* tick of last NAV-PVT, 0 = never */
+    uint32_t last_fix_ms;           /* tick of last valid fix (>= 2) */
 } gps_data_t;
 
 typedef struct {
