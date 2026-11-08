@@ -89,7 +89,7 @@ export const PoiModal: React.FC<PoiModalProps> = ({
 
         <div className="sheet-body poi-sheet-body overflow-y-auto p-4">
           <form id="poi-form" onSubmit={handleSubmit} className="poi-form">
-            {/* Category pills — Apple Maps style */}
+            {/* Category selection pills */}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-neutral-300 uppercase tracking-wider">
                 Marker Category

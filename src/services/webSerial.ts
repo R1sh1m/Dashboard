@@ -30,15 +30,69 @@ export class WebSerialManager {
     this.baudRate = baud;
   }
 
+  private async openPort(port: any): Promise<boolean> {
+    try {
+      if (!port.readable) {
+        await port.open({ baudRate: this.baudRate });
+      }
+      this.port = port;
+      this.keepReading = true;
+      this.callbacks?.onStatusChange('CONNECTED');
+      this.readLoop();
+      return true;
+    } catch (err: any) {
+      if (err.name === 'InvalidStateError' && port.readable) {
+        this.port = port;
+        this.keepReading = true;
+        this.callbacks?.onStatusChange('CONNECTED');
+        this.readLoop();
+        return true;
+      }
+      throw err;
+    }
+  }
+
+  public async autoConnect(): Promise<boolean> {
+    if (!this.isSupported() || this.port || this.keepReading) return false;
+    try {
+      const ports = await (navigator as any).serial.getPorts();
+      if (ports && ports.length > 0) {
+        return await this.openPort(ports[0]);
+      }
+    } catch {
+      // Ignore background auto-connect failure
+    }
+    return false;
+  }
+
   public async connect(): Promise<boolean> {
     if (!this.isSupported()) {
       this.callbacks?.onStatusChange('ERROR', 'WebSerial is not supported in this browser. Use Chrome, Edge, or Opera.');
       return false;
     }
 
+    if (this.port && this.keepReading && this.port.readable) {
+      this.callbacks?.onStatusChange('CONNECTED');
+      return true;
+    }
+
     try {
       this.callbacks?.onStatusChange('CONNECTING');
-      this.port = await (navigator as any).serial.requestPort({
+
+      if (this.port) {
+        await this.disconnect();
+      }
+
+      try {
+        const ports = await (navigator as any).serial.getPorts();
+        if (ports && ports.length > 0) {
+          return await this.openPort(ports[0]);
+        }
+      } catch {
+        // Fall back to requestPort
+      }
+
+      const port = await (navigator as any).serial.requestPort({
         filters: [
           { usbVendorId: 0x303a }, // Espressif Systems
           { usbVendorId: 0x10c4 }, // Silicon Labs CP210x
@@ -47,11 +101,7 @@ export class WebSerialManager {
         ]
       });
 
-      await this.port.open({ baudRate: this.baudRate });
-      this.keepReading = true;
-      this.callbacks?.onStatusChange('CONNECTED');
-      this.readLoop();
-      return true;
+      return await this.openPort(port);
     } catch (err: any) {
       if (err.name === 'NotFoundError') {
         this.callbacks?.onStatusChange('DISCONNECTED');
@@ -78,6 +128,11 @@ export class WebSerialManager {
       console.warn('Error during serial port close:', err);
     }
     this.callbacks?.onStatusChange('DISCONNECTED');
+  }
+
+  /** Test-only hook: directly inject a telemetry packet into onPacket callback. Dev-only. */
+  public testInject(packet: TelemetryPacket): void {
+    this.callbacks?.onPacket(packet);
   }
 
   public async sendCommand(cmd: string): Promise<boolean> {
@@ -150,3 +205,8 @@ export class WebSerialManager {
 }
 
 export const serialService = new WebSerialManager();
+
+// Expose for E2E test injection in dev mode only
+if (import.meta.env.DEV) {
+  (window as any).__serialService = serialService;
+}

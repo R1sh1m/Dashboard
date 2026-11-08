@@ -16,6 +16,71 @@ L.Icon.Default.mergeOptions({
 
 import { getTileLayer, type MapType } from '../lib/mapLayers';
 
+const SCALE_BAR_WIDTH = 112;
+
+class ArtemisScaleControl extends L.Control {
+  private labelElement: HTMLSpanElement | null = null;
+  private barElement: HTMLDivElement | null = null;
+  private updateScale: (() => void) | null = null;
+
+  onAdd(map: L.Map): HTMLElement {
+    const container = L.DomUtil.create('div', 'artemis-scale-control');
+    container.setAttribute('role', 'img');
+    container.setAttribute('aria-label', 'Map scale');
+    const title = L.DomUtil.create('span', 'artemis-scale-title', container);
+    title.textContent = 'Scale';
+
+    const row = L.DomUtil.create('div', 'artemis-scale-row', container);
+    const zeroLabel = L.DomUtil.create('span', 'artemis-scale-zero', row);
+    zeroLabel.textContent = '0';
+    this.barElement = L.DomUtil.create('div', 'artemis-scale-bar', row);
+    this.labelElement = L.DomUtil.create('span', 'artemis-scale-label', row);
+
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+
+    this.updateScale = () => {
+      if (!this.barElement || !this.labelElement) return;
+
+      const size = map.getSize();
+      const y = size.y / 2;
+      const start = map.containerPointToLatLng([0, y]);
+      const end = map.containerPointToLatLng([SCALE_BAR_WIDTH, y]);
+      const distance = map.distance(start, end);
+      if (!Number.isFinite(distance) || distance <= 0) return;
+
+      const magnitude = 10 ** Math.floor(Math.log10(distance));
+      const normalizedDistance = distance / magnitude;
+      const niceDistance = normalizedDistance >= 5
+        ? 5 * magnitude
+        : normalizedDistance >= 2
+          ? 2 * magnitude
+          : magnitude;
+
+      const barWidth = Math.max(32, Math.round((niceDistance / distance) * SCALE_BAR_WIDTH));
+      this.barElement.style.width = `${barWidth}px`;
+      this.labelElement.textContent = niceDistance >= 1000
+        ? `${niceDistance / 1000} km`
+        : `${Math.round(niceDistance)} m`;
+    };
+
+    map.on('zoomend moveend resize', this.updateScale);
+    map.whenReady(() => requestAnimationFrame(() => this.updateScale?.()));
+    return container;
+  }
+
+  onRemove(map: L.Map): void {
+    if (this.updateScale) {
+      map.off('zoomend', this.updateScale);
+      map.off('moveend', this.updateScale);
+      map.off('resize', this.updateScale);
+    }
+    this.updateScale = null;
+    this.labelElement = null;
+    this.barElement = null;
+  }
+}
+
 interface MapViewProps {
   gps: GpsData | null;
   pois: PointOfInterest[];
@@ -27,11 +92,14 @@ interface MapViewProps {
   lastPacketTime: number | null;
   mapType?: MapType;
   followGps: boolean;
+  lastKnownPosition?: { lat: number; lng: number } | null;
+  isWarning?: boolean;
 }
 
 export interface MapViewHandle {
   recenterRobot: () => void;
   recenterHome: () => void;
+  recenterLkl: () => void;
   goToLocation: (lat: number, lng: number) => void;
   resetZoom: () => void;
   zoomIn: () => void;
@@ -49,6 +117,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   lastPacketTime,
   mapType = 'osm',
   followGps,
+  lastKnownPosition,
+  isWarning,
 }, ref) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -62,10 +132,49 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const poiMarkerRef = useRef<Map<string, L.Marker>>(new Map());
   const draftMarkerRef = useRef<L.Marker | null>(null);
   const lklCircleRef = useRef<L.Circle | null>(null);
+  const warningMarkerRef = useRef<L.Marker | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
 
-  const initialLatRef = useRef(gps?.lat ?? 12.971598);
-  const initialLngRef = useRef(gps?.lng ?? 77.594566);
+  const initialLatRef = useRef(gps?.lat ?? 12.974842);
+  const initialLngRef = useRef(gps?.lng ?? 79.165479);
+
+  // The map container fills the whole viewport, but the persistent left
+  // sidebar and the right sensor sheet cover parts of it. Leaflet centers on
+  // the container center, which would place the target behind a pane. Compute
+  // the pixel shift needed so a map center lands in the middle of the visible
+  // (pane-free) map area instead.
+  const getVisibleOffset = (): [number, number] => {
+    const sidebar = document.querySelector<HTMLElement>('.sidebar');
+    const sheet = document.querySelector<HTMLElement>('.sheet.telemetry-sheet');
+    const leftWidth = sidebar ? sidebar.getBoundingClientRect().width : 0;
+    const rightWidth = sheet ? sheet.getBoundingClientRect().width : 0;
+    // Visible area = [leftWidth, containerWidth - rightWidth]; its center is
+    // shifted from the container center by (leftWidth - rightWidth) / 2.
+    return [(leftWidth - rightWidth) / 2, 0];
+  };
+
+  // Pan to a latlng so it lands at the center of the visible map area (not the
+  // full container, which is partly hidden behind panes).
+  const panToVisible = (latlng: [number, number], options?: L.PanOptions) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    map.panTo(latlng, options);
+    const [ox, oy] = getVisibleOffset();
+    if (ox !== 0 || oy !== 0) map.panBy([ox, oy], { animate: false });
+  };
+
+  // setView equivalent that centers on the visible map area.
+  const setViewVisible = (
+    latlng: [number, number],
+    zoom: number,
+    options?: L.ZoomPanOptions,
+  ) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    map.setView(latlng, zoom, options);
+    const [ox, oy] = getVisibleOffset();
+    if (ox !== 0 || oy !== 0) map.panBy([ox, oy], { animate: false });
+  };
 
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
@@ -102,6 +211,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }).addTo(map);
 
     const poiGroup = L.layerGroup().addTo(map);
+
+    new ArtemisScaleControl({ position: 'bottomright' }).addTo(map);
 
     mapInstanceRef.current = map;
     pathLineRef.current = pathLine;
@@ -220,7 +331,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
   useEffect(() => {
     if (!mapInstanceRef.current || !gps?.valid || !followGps) return;
-    mapInstanceRef.current.panTo([gps.lat, gps.lng], { animate: true, duration: 0.6 });
+    panToVisible([gps.lat, gps.lng], { animate: true, duration: 0.3 });
   }, [gps, followGps]);
 
   // Home marker
@@ -301,39 +412,113 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
   }, [draftPosition, draftCategory, onDraftPositionChange]);
 
-  // LKL circle (map layer); HTML banner lives in App
+  // Red warning sign marker and LKL uncertainty circle when in warning state (signal lost or GPS invalid)
   useEffect(() => {
-    if (!mapInstanceRef.current || !gps) return;
+    if (!mapInstanceRef.current) return;
+
+    const fallbackLat = initialLatRef.current;
+    const fallbackLng = initialLngRef.current;
+    const targetLat = lastKnownPosition?.lat ?? (gps && gps.lat !== 0 ? gps.lat : null) ?? homePosition?.lat ?? fallbackLat;
+    const targetLng = lastKnownPosition?.lng ?? (gps && gps.lng !== 0 ? gps.lng : null) ?? homePosition?.lng ?? fallbackLng;
 
     const now = Date.now();
     const isSignalLost = lastPacketTime !== null && now - lastPacketTime > 4000;
-    const isGpsInvalid = !gps.valid;
-    const isLklActive = isSignalLost || isGpsInvalid;
+    const isGpsInvalid = !gps || !gps.valid;
+    const showWarning = isWarning ?? (isSignalLost || isGpsInvalid);
 
-    if (isLklActive) {
+    if (showWarning) {
       if (!lklCircleRef.current) {
-        lklCircleRef.current = L.circle([gps.lat, gps.lng], {
-          radius: 12,
+        lklCircleRef.current = L.circle([targetLat, targetLng], {
+          radius: 28,
           color: '#ff453a',
           fillColor: '#ff453a',
-          fillOpacity: 0.25,
+          fillOpacity: 0.18,
           weight: 2,
-          dashArray: '3, 6',
+          dashArray: '4, 6',
         }).addTo(mapInstanceRef.current);
       } else {
-        lklCircleRef.current.setLatLng([gps.lat, gps.lng]);
+        lklCircleRef.current.setLatLng([targetLat, targetLng]);
+      }
+
+      const warningHtml = `
+        <div class="custom-warning-pin pulse-beacon" style="position: relative; width: 44px; height: 52px; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+          <div style="width: 40px; height: 40px; background: #FF3B30; border: 2.5px solid #FFFFFF; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(255,59,48,0.55), 0 0 0 4px rgba(255,59,48,0.25);">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </div>
+          <div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #FF3B30; margin-top: -1px;"></div>
+          <div style="position: absolute; top: -14px; background: #FF3B30; color: #FFFFFF; font-family: system-ui, BlinkMacSystemFont, sans-serif; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 999px; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); white-space: nowrap;">
+            LAST KNOWN
+          </div>
+        </div>
+      `;
+
+      const warningIcon = L.divIcon({
+        html: warningHtml,
+        className: 'custom-warning-marker',
+        iconSize: [44, 52],
+        iconAnchor: [22, 48],
+        popupAnchor: [0, -48],
+      });
+
+      const popupHtml = `
+        <div style="font-family: system-ui, BlinkMacSystemFont, sans-serif; background: #ffffff; color: #1d1d1f; border-radius: 12px; padding: 10px; min-width: 190px;">
+          <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; color: #FF3B30;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#FF3B30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            LAST KNOWN LOCATION
+          </div>
+          <div style="font-size: 11px; color: #666; margin-top: 4px;">
+            ${isSignalLost ? 'LoRa telemetry stream lost' : 'Awaiting GPS 3D satellite fix'}
+          </div>
+          <div style="font-size: 11px; color: #1d1d1f; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #f5f5f7; padding: 4px 6px; border-radius: 6px;">
+            Lat: ${targetLat.toFixed(6)}°<br/>Lng: ${targetLng.toFixed(6)}°
+          </div>
+          ${lastPacketTime ? `<div style="font-size: 10px; color: #8e8e93; margin-top: 4px;">Last contact: ${new Date(lastPacketTime).toLocaleTimeString()}</div>` : '<div style="font-size: 10px; color: #8e8e93; margin-top: 4px;">Cached ground station coordinates</div>'}
+        </div>
+      `;
+
+      if (!warningMarkerRef.current) {
+        warningMarkerRef.current = L.marker([targetLat, targetLng], { icon: warningIcon, zIndexOffset: 950 })
+          .addTo(mapInstanceRef.current)
+          .bindPopup(popupHtml);
+      } else {
+        warningMarkerRef.current.setLatLng([targetLat, targetLng]);
+        warningMarkerRef.current.setIcon(warningIcon);
+        warningMarkerRef.current.setPopupContent(popupHtml);
       }
     } else {
+      if (warningMarkerRef.current) {
+        warningMarkerRef.current.remove();
+        warningMarkerRef.current = null;
+      }
       if (lklCircleRef.current) {
         lklCircleRef.current.remove();
         lklCircleRef.current = null;
       }
     }
-  }, [gps, lastPacketTime]);
+  }, [gps, lastPacketTime, lastKnownPosition, isWarning, homePosition]);
 
-  // POI markers — reuse existing markers by id instead of clearing+recreating
+  // POI markers — only shown while the Points of interest panel is open.
+  // Reuse existing markers by id instead of clearing+recreating.
   useEffect(() => {
     if (!poiLayerGroupRef.current) return;
+
+    // When the POI panel is closed or switched to another tab, remove all POI
+    // markers from the map so they don't linger behind other views.
+    if (!isPoiMode) {
+      poiMarkerRef.current.forEach((marker) => {
+        poiLayerGroupRef.current?.removeLayer(marker);
+      });
+      poiMarkerRef.current.clear();
+      return;
+    }
 
     const visiblePois = pois.filter((poi) => poi.category !== 'BASE_HOME');
     const currentIds = new Set(visiblePois.map((poi) => poi.id));
@@ -404,22 +589,38 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       poiLayerGroupRef.current?.addLayer(marker);
       poiMarkerRef.current.set(poi.id, marker);
     });
-  }, [pois]);
+  }, [pois, isPoiMode]);
+
+  const recenterLkl = () => {
+    if (!mapInstanceRef.current) return;
+    const fallbackLat = initialLatRef.current;
+    const fallbackLng = initialLngRef.current;
+    const targetLat = lastKnownPosition?.lat ?? (gps && gps.lat !== 0 ? gps.lat : null) ?? homePosition?.lat ?? fallbackLat;
+    const targetLng = lastKnownPosition?.lng ?? (gps && gps.lng !== 0 ? gps.lng : null) ?? homePosition?.lng ?? fallbackLng;
+    setViewVisible([targetLat, targetLng], 18, { animate: true });
+    warningMarkerRef.current?.openPopup();
+  };
 
   const recenterRobot = () => {
     if (mapInstanceRef.current && gps && gps.valid) {
-      mapInstanceRef.current.panTo([gps.lat, gps.lng], { animate: true });
+      panToVisible([gps.lat, gps.lng], { animate: true });
+    } else {
+      recenterLkl();
     }
   };
 
   const recenterHome = () => {
     if (mapInstanceRef.current && homePosition) {
-      mapInstanceRef.current.setView([homePosition.lat, homePosition.lng], 18, { animate: true });
+      setViewVisible([homePosition.lat, homePosition.lng], 18, { animate: true });
     }
   };
 
   const goToLocation = (lat: number, lng: number) => {
-    mapInstanceRef.current?.setView([lat, lng], Math.max(mapInstanceRef.current.getZoom(), 18), { animate: true });
+    setViewVisible(
+      [lat, lng],
+      Math.max(mapInstanceRef.current?.getZoom() ?? 18, 18),
+      { animate: true },
+    );
   };
 
   const zoomIn = () => {
@@ -437,6 +638,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   useImperativeHandle(ref, () => ({
     recenterRobot,
     recenterHome,
+    recenterLkl,
     goToLocation,
     resetZoom,
     zoomIn,

@@ -26,7 +26,7 @@ export function getTileLayer(mapType: MapType): L.TileLayer {
       // native limit when the map is already at a deep zoom level.
       detectRetina: false,
       reuseTiles: true,
-      updateWhenIdle: true,
+      updateWhenIdle: false, // Load tiles while panning so the map fills in as you move, not after you stop.
       updateWhenZooming: true,
       keepBuffer: 4,
       maxNativeZoom: preset.maxZoom,

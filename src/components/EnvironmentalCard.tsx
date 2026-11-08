@@ -7,14 +7,16 @@ interface EnvironmentalCardProps {
 }
 
 export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => {
-  const temp = env?.temp_c ?? 25;
-  const humidity = env?.humidity_pct ?? 50;
-  const pressure = env?.pressure_hpa ?? 1013.2;
-  const gas = env?.gas_resistance_kohm ?? 40;
-  const iaq = env?.iaq ?? 40;
-  const isAnomaly = env?.anomaly_flag ?? false;
+  const hasReading = env !== null && !(env.temp_c === 0 && env.pressure_hpa === 0 && env.humidity_pct === 0);
+  const temp = hasReading ? env.temp_c : null;
+  const humidity = hasReading ? env.humidity_pct : null;
+  const pressure = hasReading ? env.pressure_hpa : null;
+  const gas = hasReading ? env.gas_resistance_kohm : null;
+  const iaq = hasReading ? env.iaq : null;
+  const isAnomaly = hasReading && (env.anomaly_flag ?? false);
 
-  const getIaqQuality = (val: number) => {
+  const getIaqQuality = (val: number | null) => {
+    if (val === null) return { label: 'STANDBY', color: '#8e8e93' };
     if (val <= 50) return { label: 'EXCELLENT', color: '#30d158' };
     if (val <= 100) return { label: 'GOOD', color: '#30d158' };
     if (val <= 150) return { label: 'MODERATE', color: '#ffd60a' };
@@ -31,7 +33,11 @@ export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => 
           <Wind className="w-3.5 h-3.5 text-[#ffd60a]" />
           BME688 ENVIRONMENTAL SENSORS
         </span>
-        {isAnomaly ? (
+        {!hasReading ? (
+          <span className="text-sm font-mono px-2 py-0.5 rounded bg-white/10 text-neutral-400">
+            SENSOR STANDBY
+          </span>
+        ) : isAnomaly ? (
           <span className="text-sm font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-[#ffd60a] border border-amber-500/40 flex items-center gap-1 animate-pulse">
             <AlertTriangle className="w-3 h-3" />
             GAS DISTURBANCE
@@ -51,7 +57,7 @@ export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => 
           </span>
           <div className="flex items-baseline gap-1 mt-0.5">
             <span className="text-3xl font-mono font-bold text-white">
-              {temp.toFixed(1)}
+              {temp !== null ? temp.toFixed(1) : '--'}
             </span>
             <span className="text-base text-neutral-300">°C</span>
           </div>
@@ -64,7 +70,7 @@ export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => 
           </span>
           <div className="flex items-baseline gap-1 mt-0.5">
             <span className="text-3xl font-mono font-bold text-white">
-              {humidity.toFixed(1)}
+              {humidity !== null ? humidity.toFixed(1) : '--'}
             </span>
             <span className="text-base text-neutral-300">%</span>
           </div>
@@ -77,7 +83,7 @@ export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => 
           </span>
           <div className="flex items-baseline gap-1 mt-0.5">
             <span className="text-3xl font-mono font-bold text-white">
-              {pressure.toFixed(1)}
+              {pressure !== null ? pressure.toFixed(1) : '--'}
             </span>
             <span className="text-base text-neutral-300">hPa</span>
           </div>
@@ -92,11 +98,11 @@ export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => 
           </div>
           <div className="flex items-baseline gap-1 mt-0.5">
             <span className="text-3xl font-mono font-bold text-white">
-              {gas.toFixed(1)}
+              {gas !== null ? gas.toFixed(1) : '--'}
             </span>
             <span className="text-base text-neutral-300">kΩ</span>
             <span className="text-base font-mono ml-auto" style={{ color: iaqStatus.color }}>
-              IAQ {iaq}
+              IAQ {iaq !== null ? iaq : '--'}
             </span>
           </div>
         </div>

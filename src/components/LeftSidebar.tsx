@@ -26,24 +26,26 @@ interface LeftSidebarProps {
   onHome: () => void;
   onSavePoi: () => void;
   onTriggerEStop?: () => void;
+  onConnectSerial?: () => void;
+  onDisconnectSerial?: () => void;
 }
 
-// Apple-style pill colors for ROBOT state
+// Status pill colors for ROBOT state
 const ROBOT_PILL: Record<string, { bg: string; border: string; text: string; animate?: string }> = {
-  STANDBY: { bg: 'rgba(255, 214, 10, 0.16)', border: 'rgba(255, 214, 10, 0.3)', text: '#ffd60a' },
-  WALKING: { bg: 'rgba(34, 197, 94, 0.81)', border: 'rgba(34, 197, 94, 0.3)', text: '#30d158', animate: 'animate-pulse' },
-  EMERGENCY_STOP: { bg: 'rgba(255, 69, 58, 0.16)', border: 'rgba(255, 69, 58, 0.3)', text: '#ff453a', animate: 'animate-ping' },
-  HOMING: { bg: 'rgba(41, 151, 255, 0.81)', border: 'rgba(41, 151, 255, 0.3)', text: '#2997ff' },
-  EXPLORING: { bg: 'rgba(41, 151, 255, 0.81)', border: 'rgba(41, 151, 255, 0.3)', text: '#2997ff' },
-  CALIBRATING: { bg: 'rgba(255, 214, 10, 0.81)', border: 'rgba(255, 214, 10, 0.3)', text: '#ffd60a' },
+  STANDBY: { bg: 'rgba(255, 214, 10, 0.16)', border: '1px solid rgba(255, 214, 10, 0.35)', text: '#ffd60a' },
+  WALKING: { bg: 'rgba(48, 209, 88, 0.16)', border: '1px solid rgba(48, 209, 88, 0.4)', text: '#30d158', animate: 'animate-pulse' },
+  EMERGENCY_STOP: { bg: 'rgba(255, 69, 58, 0.18)', border: '1px solid rgba(255, 69, 58, 0.45)', text: '#ff6961', animate: 'animate-ping' },
+  HOMING: { bg: 'rgba(41, 151, 255, 0.16)', border: '1px solid rgba(41, 151, 255, 0.4)', text: '#2997ff' },
+  EXPLORING: { bg: 'rgba(41, 151, 255, 0.16)', border: '1px solid rgba(41, 151, 255, 0.4)', text: '#2997ff' },
+  CALIBRATING: { bg: 'rgba(255, 214, 10, 0.16)', border: '1px solid rgba(255, 214, 10, 0.4)', text: '#ffd60a' },
 };
 
-// Apple-style pill colors for LINK state
-const LINK_PILL: Record<SerialStatus, { bg: string; border: string; text: string; animate?: string }> = {
-  DISCONNECTED: { bg: 'rgba(161, 161, 170, 0.16)', border: 'rgba(161, 161, 170, 0.3)', text: '#a1a1aa' },
-  CONNECTING: { bg: 'rgba(255, 214, 10, 0.81)', border: 'rgba(255, 214, 10, 0.3)', text: '#ffd60a', animate: 'animate-pulse' },
-  CONNECTED: { bg: 'rgba(48, 209, 88, 0.81)', border: 'rgba(48, 209, 88, 0.3)', text: '#30d158', animate: 'animate-pulse' },
-  ERROR: { bg: 'rgba(255, 69, 58, 0.81)', border: 'rgba(255, 69, 58, 0.3)', text: '#ff453a' },
+// Status pill colors for LINK state (translucent glassmorphism with high contrast text)
+const LINK_PILL: Record<SerialStatus, { bg: string; border: string; text: string; dot: string; animate?: string }> = {
+  DISCONNECTED: { bg: 'rgba(161, 161, 170, 0.16)', border: '1px solid rgba(161, 161, 170, 0.35)', text: '#f4f4f5', dot: 'bg-zinc-400' },
+  CONNECTING: { bg: 'rgba(255, 214, 10, 0.18)', border: '1px solid rgba(255, 214, 10, 0.5)', text: '#ffd60a', dot: 'bg-yellow-400', animate: 'animate-pulse' },
+  CONNECTED: { bg: 'rgba(48, 209, 88, 0.18)', border: '1px solid rgba(48, 209, 88, 0.5)', text: '#30d158', dot: 'bg-emerald-400', animate: 'animate-pulse' },
+  ERROR: { bg: 'rgba(255, 69, 58, 0.22)', border: '1px solid rgba(255, 69, 58, 0.65)', text: '#ffffff', dot: 'bg-red-500', animate: 'animate-pulse' },
 };
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -58,6 +60,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onHome,
   onSavePoi,
   onTriggerEStop = () => {},
+  onConnectSerial,
+  onDisconnectSerial,
 }) => {
   const robotStyle = ROBOT_PILL[botState] ?? ROBOT_PILL.STANDBY;
   const estopStyle = ROBOT_PILL.EMERGENCY_STOP;
@@ -141,12 +145,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="sidebar-footer">
         <div className="flex flex-col items-end gap-2">
           <button
-            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative gap-2`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative gap-2 backdrop-blur-md transition-all hover:brightness-110 active:scale-95`}
             onClick={() => { setActiveNav('estop'); onTriggerEStop(); }}
             aria-label="Emergency stop"
             style={{
               backgroundColor: estopStyle.bg,
-              borderColor: estopStyle.border,
+              border: estopStyle.border,
               color: estopStyle.text,
             }}
           >
@@ -154,27 +158,37 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <span>E-STOP</span>
           </button>
           <span
-            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative`}
+            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative backdrop-blur-md`}
             style={{
               backgroundColor: robotStyle.bg,
-              borderColor: robotStyle.border,
+              border: robotStyle.border,
               color: robotStyle.text,
             }}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${effectiveDot} absolute left-3`} />
             {botState}
           </span>
-          <span
-            className={`pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative`}
+          <button
+            type="button"
+            className="pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative cursor-pointer backdrop-blur-md transition-all hover:brightness-125 active:scale-95 shadow-sm"
+            onClick={serialStatus === 'CONNECTED' ? onDisconnectSerial : onConnectSerial}
+            aria-label={serialStatus === 'CONNECTED' ? 'Disconnect serial link' : 'Connect serial link'}
+            title={
+              serialStatus === 'CONNECTED'
+                ? 'ESP32 connected (click to disconnect)'
+                : serialStatus === 'ERROR'
+                  ? 'Connection error: click to retry connecting to COM3'
+                  : 'Click to connect ESP32 on COM3'
+            }
             style={{
               backgroundColor: linkStyle.bg,
-              borderColor: linkStyle.border,
+              border: linkStyle.border,
               color: linkStyle.text,
             }}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${linkStyle.animate || ''} absolute left-3`} />
-            {serialStatus}
-          </span>
+            <span className={`w-1.5 h-1.5 rounded-full ${linkStyle.dot} ${linkStyle.animate || ''} absolute left-3`} />
+            {serialStatus === 'DISCONNECTED' ? 'CONNECT' : serialStatus === 'ERROR' ? 'ERROR · RETRY' : serialStatus}
+          </button>
         </div>
       </div>
     </aside>

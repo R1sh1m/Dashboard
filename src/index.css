@@ -205,6 +205,75 @@ body {
   filter: brightness(0.85) invert(1) contrast(3) hue-rotate(200deg) saturate(0.35);
 }
 
+.artemis-scale-control {
+  display: grid;
+  gap: 5px;
+  min-width: 154px;
+  margin: 0 22px 132px 0 !important;
+  padding: 8px 10px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 10px;
+  color: #c5c5ca;
+  background: rgba(25, 26, 29, 0.78);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  font-family: var(--font-stack);
+  pointer-events: none;
+}
+
+.artemis-scale-title {
+  color: #8e8e93;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.artemis-scale-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-height: 14px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.artemis-scale-zero {
+  color: #c5c5ca;
+}
+
+.artemis-scale-bar {
+  position: relative;
+  height: 8px;
+  min-width: 32px;
+  border-top: 2px solid #f5f5f7;
+  border-right: 2px solid #f5f5f7;
+  border-bottom: 2px solid #f5f5f7;
+  border-left: 2px solid #f5f5f7;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(245, 245, 247, 0.95) 0 14px,
+    rgba(245, 245, 247, 0.25) 14px 28px
+  );
+}
+
+.artemis-scale-label {
+  color: #f5f5f7;
+}
+
+@media (max-width: 760px) {
+  .artemis-scale-control {
+    margin-right: 12px !important;
+    margin-bottom: 128px !important;
+    transform: scale(0.94);
+    transform-origin: bottom right;
+  }
+}
+
 /* Pulsing Last Known Location (LKL) animation */
 @keyframes lkl-pulse {
   0% {

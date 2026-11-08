@@ -5,6 +5,7 @@ import {
   Bot,
   CloudSun,
   CheckCircle2,
+  PlugZap,
   Radio,
   Radar,
   Satellite,
@@ -116,7 +117,7 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
             onClear={onClearLogs}
           />
         )}
-        {isCoreTelemetry && (
+        {activeTab !== 'logs' && (
           <div className="sheet-header-controls">
             <label className="baud-control">
               <span>Baud</span>
@@ -136,9 +137,13 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
               onClick={serialStatus === 'CONNECTED' ? onDisconnectSerial : onConnectSerial}
               disabled={serialStatus === 'CONNECTING'}
               aria-label={serialStatus === 'CONNECTED' ? 'Disconnect ESP32' : 'Connect ESP32'}
-              title={serialStatus === 'CONNECTED' ? 'ESP32 connected' : 'Connect ESP32'}
+              title={serialStatus === 'CONNECTED' ? 'ESP32 connected (click to disconnect)' : 'Connect ESP32 (click to connect)'}
             >
-              <CheckCircle2 size={18} aria-hidden="true" />
+              {serialStatus === 'CONNECTED' ? (
+                <CheckCircle2 size={18} aria-hidden="true" />
+              ) : (
+                <PlugZap size={18} aria-hidden="true" />
+              )}
             </button>
           </div>
         )}

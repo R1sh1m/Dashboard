@@ -37,6 +37,7 @@ export function App() {
     return stored === 'satellite' || stored === 'terrain' || stored === 'osm' ? stored : 'osm';
   });
   const [isLklExpanded, setIsLklExpanded] = useState(false);
+  const [lastKnownPosition, setLastKnownPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [activeNav, setActiveNav] = useState<'home' | 'saved' | 'telemetry' | 'estop'>('home');
   const [poiCycleIdx, setPoiCycleIdx] = useState(0);
   const [mapControlMode, setMapControlMode] = useState<'sensor' | 'manual'>(() => (
@@ -73,6 +74,9 @@ export function App() {
     setTelemetry(packet);
     setGpsData(packet.gps);
     setLastPacketTime(Date.now());
+    if (packet.gps.valid && packet.gps.lat !== 0 && packet.gps.lng !== 0) {
+      setLastKnownPosition({ lat: packet.gps.lat, lng: packet.gps.lng });
+    }
     setHomePosition((current) => {
       if (!current && packet.gps.valid) {
         addLog('INFO', 'GPS', `Home Base Origin latched at ${packet.gps.lat.toFixed(6)}, ${packet.gps.lng.toFixed(6)}`);
@@ -126,7 +130,8 @@ export function App() {
   const handleIncomingGps = useCallback((gps: GpsData) => {
     setGpsData(gps);
     setTelemetry((current) => current ? { ...current, gps } : current);
-    if (gps.valid) {
+    if (gps.valid && gps.lat !== 0 && gps.lng !== 0) {
+      setLastKnownPosition({ lat: gps.lat, lng: gps.lng });
       setHomePosition((current) => current ?? { lat: gps.lat, lng: gps.lng });
     }
   }, []);
@@ -143,6 +148,7 @@ export function App() {
         if (status === 'ERROR') addLog('ERR', 'SERIAL', error || 'Serial communication error');
       },
     });
+    void serialService.autoConnect();
   }, [addLog, baudRate, handleIncomingGps, handleIncomingPacket]);
 
   const connectSerial = async () => { serialService.setBaudRate(baudRate); await serialService.connect(); };
@@ -177,8 +183,8 @@ export function App() {
     });
   };
 
-  const curLat = gpsData?.lat ?? 12.971598;
-  const curLng = gpsData?.lng ?? 77.594566;
+  const curLat = gpsData?.lat ?? 12.974842;
+  const curLng = gpsData?.lng ?? 79.165479;
   const markedHome = pois.find((poi) => poi.category === 'BASE_HOME');
   const mapHomePosition = markedHome
     ? { lat: markedHome.lat, lng: markedHome.lng }
@@ -231,6 +237,11 @@ export function App() {
     setIsSensorSheetOpen(true);
   };
 
+  const handleLklClick = () => {
+    setIsLklExpanded((prev) => !prev);
+    mapRef.current?.recenterLkl();
+  };
+
   return (
     <div className={`maps-shell ${isSensorSheetOpen ? 'sensor-open' : ''} ${isPoiModalOpen ? 'poi-mode' : ''} relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans`}>
       <div className="map-full">
@@ -246,6 +257,8 @@ export function App() {
           lastPacketTime={lastPacketTime}
           mapType={mapType}
           followGps={mapControlMode === 'sensor'}
+          lastKnownPosition={lastKnownPosition}
+          isWarning={signalLost || gpsInvalid}
         />
       </div>
       <a className="skip-link" href="#map-main">Skip to map</a>
@@ -254,7 +267,7 @@ export function App() {
         {(signalLost || gpsInvalid) && (
           <button
             className={`lkl-btn ${isLklExpanded ? 'expanded' : 'collapsed'}`}
-            onClick={() => setIsLklExpanded((prev) => !prev)}
+            onClick={handleLklClick}
             aria-expanded={isLklExpanded}
             aria-label={isLklExpanded ? 'Collapse last known location' : 'Last known location'}
           >
@@ -309,6 +322,8 @@ export function App() {
           setIsSensorSheetOpen(false);
           setIsPoiModalOpen((prev) => !prev);
         }}
+        onConnectSerial={connectSerial}
+        onDisconnectSerial={disconnectSerial}
       />
       <SensorSheet
         isOpen={isSensorSheetOpen}
