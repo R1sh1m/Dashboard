@@ -594,6 +594,9 @@ void app_loop(void)
                 g_env.iaq = iaq;
                 g_env.iaq_accuracy = iaq_acc;
                 send_env(now);
+            } else {
+                g_bme_ok = 0;
+                printf("BME688 read failed; retrying sensor initialization\r\n");
             }
         }
     } else {
