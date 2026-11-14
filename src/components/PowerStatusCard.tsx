@@ -7,7 +7,7 @@ interface PowerStatusCardProps {
   uptimeSec?: number;
 }
 
-export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power, uptimeSec = 0 }) => {
+export const PowerStatusCard: React.FC<PowerStatusCardProps> = React.memo(({ power, uptimeSec = 0 }) => {
   const voltage = power?.voltage_v ?? 11.1;
   const current = power?.current_a ?? 0;
   const percent = power?.percent ?? 0;
@@ -17,6 +17,7 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power, uptimeS
   const minCell = Math.min(...cells);
   const deltaCell = +(maxCell - minCell).toFixed(3);
   const isImbalanced = deltaCell > 0.08;
+  const isLowSoc = percent <= 20;
 
   const getPercentColor = (pct: number) => {
     if (pct > 50) return '#30d158';
@@ -25,7 +26,7 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power, uptimeS
   };
 
   return (
-    <div className="glass-panel p-3.5 flex flex-col gap-2.5">
+    <div className="glass-panel p-3.5 flex flex-col gap-2.5" aria-live={isLowSoc ? 'polite' : 'off'} aria-atomic="true">
       <div className="flex items-center justify-between">
         <span className="text-base font-semibold tracking-wider text-neutral-300 uppercase flex items-center gap-1.5">
           <BatteryCharging className="w-3.5 h-3.5 text-[#30d158]" />
@@ -91,4 +92,6 @@ export const PowerStatusCard: React.FC<PowerStatusCardProps> = ({ power, uptimeS
       <p className="power-estimate-caption">Estimate only; servo load and runtime drive the projection.</p>
     </div>
   );
-};
+});
+
+PowerStatusCard.displayName = 'PowerStatusCard';

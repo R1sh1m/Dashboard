@@ -25,8 +25,8 @@ This table locks in the exact physical wiring connections on the NUCLEO-F722ZE b
 | | MCU TX → GPS RX | **PD5** | — | CN10 / 15 | USART2_TX (AF7, 9600 bps) | GPS Board RX pin | 3.3V |
 | | VCC | 3.3V | 3.3V | CN8 / 7 | Power Rail | GPS VCC | 3.3V |
 | | GND | GND | GND | CN8 / 11 | Common Ground | GPS GND | 0V |
-| **LD2412 Radar** | Radar TX → MCU RX | **PD2** | — | CN9 / 5 | UART5_RX (AF8, 115200 bps) | Radar TX pin | 3.3V |
-| | MCU TX → Radar RX | **PC12** | — | CN9 / 3 | UART5_TX (AF8, 115200 bps) | Radar RX pin | 3.3V |
+| **LD2412 Radar** | Radar TX → MCU RX | **PD2** | — | CN8 / 12 (or CN11 / 4) | UART5_RX (AF8, 115200 bps) | Radar TX pin | 3.3V |
+| | MCU TX → Radar RX | **PC12** | — | CN8 / 10 (or CN11 / 3) | UART5_TX (AF8, 115200 bps) | Radar RX pin | 3.3V |
 | | VCC | **5V** | 5V | CN8 / 9 | 5V Rail | Radar VCC (5V Required!) | 5V |
 | | GND | GND | GND | CN8 / 11 | Common Ground | Radar GND | 0V |
 | **SX1262 LoRa Radio** | SCK | **PA5** | D13 | CN7 / 10 | SPI1_SCK (AF5) | SX1262 SCK | 3.3V |

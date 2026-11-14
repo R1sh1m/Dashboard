@@ -104,7 +104,12 @@ void app_main(void)
             
             /* Re-enter continuous RX mode for subsequent packets */
             radio_start_rx();
-        } else if (evt == RADIO_EVT_TIMEOUT) {
+        }
+
+        /* Poll serial for dashboard commands (radar config, E-STOP, etc.) */
+        ground_bridge_poll_serial();
+
+        if (evt == RADIO_EVT_TIMEOUT) {
             ESP_LOGW(TAG, "RX timeout - restarting RX");
             radio_start_rx();
         } else if (evt == RADIO_EVT_ERR) {

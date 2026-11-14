@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { AlertTriangle, Layers, LocateFixed, Minus, MousePointer2, Navigation2, Plus } from 'lucide-react';
 import { MapView, type MapViewHandle } from './components/MapView';
 import { LeftSidebar } from './components/LeftSidebar';
@@ -11,6 +11,11 @@ import { MAP_TYPE_ORDER, type MapType } from './lib/mapLayers';
 
 // GPS move threshold in meters. Below this, the rover is treated as stationary (standby).
 const GPS_MOVE_THRESHOLD_M = 0.5;
+
+// Minimum distance (meters) between two auto-pins of the same category before
+// a new one is accepted. Prevents map clustering when the rover is stationary
+// or barely moving while a sensor trigger is sustained.
+const POI_MIN_SPACING_M = 5;
 
 // Haversine distance between two lat/lng points in meters.
 const haversineDistanceM = (
@@ -57,6 +62,17 @@ export function App() {
     return stored === 'satellite' || stored === 'terrain' || stored === 'osm' ? stored : 'osm';
   });
   const [isLklExpanded, setIsLklExpanded] = useState(false);
+  const [isEstopActive, setIsEstopActive] = useState(false);
+  const [isSendingRadarConfig, setIsSendingRadarConfig] = useState(false);
+  // Radar configuration (LD2410B) — operator-tunable sensitivity, range, blind zone,
+  // engineering mode. Sent to the rover via serial CMD_RADAR_* commands.
+  const [radarSettings, setRadarSettings] = useState({
+    mov_sens: 8,
+    stat_sens: 8,
+    range_gate: 8,
+    blind_zone_cm: 0,
+    eng_mode: true,
+  });
   const [lastKnownPosition, setLastKnownPosition] = useState<{ lat: number; lng: number } | null>({ lat: 12.974842, lng: 79.165479 });
   const [activeNav, setActiveNav] = useState<'home' | 'saved' | 'telemetry' | 'estop'>('home');
   const [poiCycleIdx, setPoiCycleIdx] = useState(0);
@@ -70,6 +86,11 @@ export function App() {
   const lastTelemetryPacketAt = useRef<number | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const mapRef = useRef<MapViewHandle>(null);
+  // useTransition defers non-critical UI updates (POI list, radar history,
+  // environmental/motor/link cards) so the main thread stays responsive at
+  // 10-20 Hz telemetry. Critical state (serial status, GPS position, E-STOP)
+  // updates synchronously.
+  const [, startTransition] = useTransition();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -123,41 +144,75 @@ export function App() {
     if (packet.radar.human_detected && packet.gps.valid) {
       const timestamp = Date.now();
       if (timestamp - autoPoiCooldownRef.current.human >= 15000) {
-        autoPoiCooldownRef.current.human = timestamp;
-        setRadarHistory((current) => [
-          ...current.slice(-19),
-          {
-            timestamp,
-            distance_cm: packet.radar.distance_cm,
-            energy: packet.radar.energy,
-            target_state: packet.radar.target_state,
-          },
-        ]);
-        const humanPoi: PointOfInterest = {
-          id: `human_${timestamp}`, category: 'HUMAN_RADAR', lat: packet.gps.lat, lng: packet.gps.lng,
-          title: 'Human Presence (LD2410B)',
-          notes: `Target: ${packet.radar.target_state} | Dist: ${packet.radar.distance_cm}cm | Energy: ${packet.radar.energy}%`,
-          timestamp, meta: { distance_cm: packet.radar.distance_cm, energy: packet.radar.energy },
-        };
-        setPois((current) => [...current, humanPoi]);
-        void poiDatabase.save(humanPoi).catch((error: unknown) => {
-          console.error('Failed to save radar point of interest.', error);
+        const newLat = packet.gps.lat;
+        const newLng = packet.gps.lng;
+        startTransition(() => {
+          setRadarHistory((current) => [
+            ...current.slice(-19),
+            {
+              timestamp,
+              distance_cm: packet.radar.mov_distance_cm || packet.radar.stat_distance_cm || 0,
+              energy: packet.radar.mov_energy || packet.radar.stat_energy || 0,
+              target_state: packet.radar.target_state,
+            },
+          ]);
+          setPois((current) => {
+            // Spatial dedup: skip if another HUMAN_RADAR pin is within POI_MIN_SPACING_M
+            const tooClose = current.some(
+              (p) =>
+                p.category === 'HUMAN_RADAR' &&
+                haversineDistanceM(p.lat, p.lng, newLat, newLng) < POI_MIN_SPACING_M,
+            );
+            if (tooClose) return current;
+            autoPoiCooldownRef.current.human = timestamp;
+            const humanPoi: PointOfInterest = {
+              id: `human_${timestamp}`,
+              category: 'HUMAN_RADAR',
+              lat: newLat,
+              lng: newLng,
+              title: 'Human Presence (LD2410B)',
+              notes: `Target: ${packet.radar.target_state} | Mov: ${packet.radar.mov_distance_cm}cm/${packet.radar.mov_energy}% | Stat: ${packet.radar.stat_distance_cm}cm/${packet.radar.stat_energy}%`,
+              timestamp,
+              meta: { distance_cm: packet.radar.mov_distance_cm || packet.radar.stat_distance_cm || 0, energy: packet.radar.mov_energy || packet.radar.stat_energy || 0 },
+            };
+            void poiDatabase.save(humanPoi).catch((error: unknown) => {
+              console.error('Failed to save radar point of interest.', error);
+            });
+            return [...current, humanPoi];
+          });
         });
       }
     }
     if (packet.env.anomaly_flag && packet.gps.valid) {
       const timestamp = Date.now();
       if (timestamp - autoPoiCooldownRef.current.environment >= 20000) {
-        autoPoiCooldownRef.current.environment = timestamp;
-        const environmentPoi: PointOfInterest = {
-          id: `env_${timestamp}`, category: 'ENV_ANOMALY', lat: packet.gps.lat, lng: packet.gps.lng,
-          title: 'Environmental Gas Spike',
-          notes: `BME688 Gas: ${packet.env.gas_resistance_kohm} kΩ | IAQ: ${packet.env.iaq}`,
-          timestamp, meta: { gas_kohm: packet.env.gas_resistance_kohm, iaq: packet.env.iaq },
-        };
-        setPois((current) => [...current, environmentPoi]);
-        void poiDatabase.save(environmentPoi).catch((error: unknown) => {
-          console.error('Failed to save environmental point of interest.', error);
+        const newLat = packet.gps.lat;
+        const newLng = packet.gps.lng;
+        startTransition(() => {
+          setPois((current) => {
+            // Spatial dedup: skip if another ENV_ANOMALY pin is within POI_MIN_SPACING_M
+            const tooClose = current.some(
+              (p) =>
+                p.category === 'ENV_ANOMALY' &&
+                haversineDistanceM(p.lat, p.lng, newLat, newLng) < POI_MIN_SPACING_M,
+            );
+            if (tooClose) return current;
+            autoPoiCooldownRef.current.environment = timestamp;
+            const environmentPoi: PointOfInterest = {
+              id: `env_${timestamp}`,
+              category: 'ENV_ANOMALY',
+              lat: newLat,
+              lng: newLng,
+              title: 'Environmental Gas Spike',
+              notes: `BME688 Gas: ${packet.env.gas_resistance_kohm} kΩ | IAQ: ${packet.env.iaq}`,
+              timestamp,
+              meta: { gas_kohm: packet.env.gas_resistance_kohm, iaq: packet.env.iaq },
+            };
+            void poiDatabase.save(environmentPoi).catch((error: unknown) => {
+              console.error('Failed to save environmental point of interest.', error);
+            });
+            return [...current, environmentPoi];
+          });
         });
       }
     }
@@ -209,16 +264,50 @@ export function App() {
   const disconnectSerial = async () => serialService.disconnect();
   const triggerEStop = async () => {
     addLog('ERR', 'CMD', 'EMERGENCY STOP (E-STOP) BROADCAST SENT TO ESP32');
-    if (serialStatus === 'CONNECTED') await serialService.sendCommand('ESTOP');
-    // Sever the connection with the Ground ESP32 on e-stop.
+    let estopSent = false;
+    if (serialStatus === 'CONNECTED') {
+      estopSent = await serialService.sendCommand('ESTOP');
+    }
+    // Sever the connection with the Ground ESP32 on e-stop only after
+    // attempting to send the command. Honor the send result explicitly.
     await serialService.disconnect();
-    addLog('WARN', 'SERIAL', 'E-STOP: severed connection with Ground ESP32');
+    addLog(
+      'WARN',
+      'SERIAL',
+      estopSent ? 'E-STOP command sent; connection severed' : 'E-STOP command FAILED to send; connection severed',
+    );
+    if (!estopSent) {
+      addLog('ERR', 'CMD', 'E-STOP: no acknowledgment — verify rover state manually');
+    }
+    setIsEstopActive(true);
     setTelemetry((current) => current ? { ...current, bot_status: { ...current.bot_status, state: 'EMERGENCY_STOP' } } : current);
   };
   const handleSidebarEStop = () => {
     setIsSensorSheetOpen(false);
     setIsPoiModalOpen(false);
     void triggerEStop();
+  };
+  /** Send LD2410B radar configuration to the rover via serial -> LoRa PKT_CMD. */
+  const sendRadarConfig = async () => {
+    if (serialStatus !== 'CONNECTED') {
+      addLog('WARN', 'SERIAL', 'Radar config: not connected to rover');
+      return false;
+    }
+    setIsSendingRadarConfig(true);
+    const ok1 = await serialService.sendCommand(`RADAR_SENS ${radarSettings.mov_sens} ${radarSettings.stat_sens}`);
+    await new Promise((r) => setTimeout(r, 120));
+    const ok2 = await serialService.sendCommand(`RADAR_RANGE ${radarSettings.range_gate}`);
+    await new Promise((r) => setTimeout(r, 120));
+    const ok3 = await serialService.sendCommand(`RADAR_BLIND ${radarSettings.blind_zone_cm}`);
+    await new Promise((r) => setTimeout(r, 120));
+    const ok4 = await serialService.sendCommand(`RADAR_ENG ${radarSettings.eng_mode ? 1 : 0}`);
+    setIsSendingRadarConfig(false);
+    addLog(
+      'INFO',
+      'RADAR',
+      `Config sent: sens=${radarSettings.mov_sens}/${radarSettings.stat_sens} range=${radarSettings.range_gate}m blind=${radarSettings.blind_zone_cm}cm eng=${radarSettings.eng_mode}`,
+    );
+    return ok1 && ok2 && ok3 && ok4;
   };
   const addManualPoi = (poi: PointOfInterest) => {
     setPois((current) => [
@@ -362,6 +451,12 @@ export function App() {
           <button className="map-control" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out"><Minus size={18} /></button>
         </div>
       </main>
+      {/* Persistent E-STOP banner — shown until operator manually resets */}
+      {isEstopActive && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-[#ff453a]/90 border-b border-[#ff453a]/50 text-center p-4 text-white font-bold text-lg">
+          E-STOP ACTIVE — Connection severed. Manually reset to restore control.
+        </div>
+      )}
       <LeftSidebar
         botState={botState}
         isEStop={isEStop}
@@ -403,6 +498,10 @@ export function App() {
         onConnectSerial={connectSerial}
         onDisconnectSerial={disconnectSerial}
         onClearLogs={() => setLogs([])}
+        radarSettings={radarSettings}
+        onRadarSettingsChange={(s) => setRadarSettings(s)}
+        onSendRadarConfig={sendRadarConfig}
+        isSendingRadarConfig={isSendingRadarConfig}
         visibleTabs={visibleTabs}
       />
       <PoiModal

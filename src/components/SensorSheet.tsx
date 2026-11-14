@@ -18,6 +18,7 @@ import { PowerStatusCard } from './PowerStatusCard';
 import { MotorMatrixCard } from './MotorMatrixCard';
 import { EnvironmentalCard } from './EnvironmentalCard';
 import { RadarCard } from './RadarCard';
+import { RadarSettings } from './RadarSettings';
 import { WirelessLinkCard } from './WirelessLinkCard';
 import { GpsCard, type MapControlMode } from './GpsCard';
 import { LogControls, LogTerminal } from './LogTerminal';
@@ -62,6 +63,16 @@ interface SensorSheetProps {
   onConnectSerial: () => void;
   onDisconnectSerial: () => void;
   onClearLogs: () => void;
+  radarSettings: {
+    mov_sens: number;
+    stat_sens: number;
+    range_gate: number;
+    blind_zone_cm: number;
+    eng_mode: boolean;
+  };
+  onRadarSettingsChange: (settings: SensorSheetProps['radarSettings']) => void;
+  onSendRadarConfig: () => void;
+  isSendingRadarConfig: boolean;
   visibleTabs?: SubsystemTab[];
 }
 
@@ -81,6 +92,10 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
   onConnectSerial,
   onDisconnectSerial,
   onClearLogs,
+  radarSettings,
+  onRadarSettingsChange,
+  onSendRadarConfig,
+  isSendingRadarConfig,
   visibleTabs = ['bot', 'power', 'motors', 'env', 'radar', 'link', 'logs'],
 }) => {
   const [filterLevel, setFilterLevel] = React.useState<LogLevel | 'ALL'>('ALL');
@@ -185,7 +200,17 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
           {!isCombinedSensors && activeTab === 'env' && <EnvironmentalCard env={telemetry?.env ?? null} />}
           {!isCombinedSensors && activeTab === 'link' && <WirelessLinkCard link={telemetry?.link ?? null} seq={telemetry?.seq ?? 0} />}
           {!isCombinedSensors && activeTab === 'gps' && <GpsCard gps={gps} mode={mapControlMode} onModeChange={onMapControlModeChange} />}
-          {activeTab === 'radar' && <RadarCard radar={telemetry?.radar ?? null} history={radarHistory} />}
+          {activeTab === 'radar' && (
+            <div className="space-y-3">
+              <RadarCard radar={telemetry?.radar ?? null} history={radarHistory} />
+              <RadarSettings
+                settings={radarSettings}
+                onChange={onRadarSettingsChange}
+                onApply={onSendRadarConfig}
+                isApplying={isSendingRadarConfig}
+              />
+            </div>
+          )}
           {activeTab === 'logs' && (
             <div className="log-terminal-wrap">
               <LogTerminal

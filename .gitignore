@@ -121,3 +121,8 @@ Docs/TestResults/
 
 # Personal reference files
 Sender_station/guide.pdf
+
+# Local-only audit & reference documents (generated artifacts, not source)
+*AUDIT_REPORT.md
+*AUDIT*.md
+*APPLE_MAPS.md

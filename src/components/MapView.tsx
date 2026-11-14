@@ -518,20 +518,10 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
   }, [gps, lastPacketTime, lastKnownPosition, isWarning, homePosition]);
 
-  // POI markers — only shown while the Points of interest panel is open.
+  // POI markers — always visible on the map regardless of panel state.
   // Reuse existing markers by id instead of clearing+recreating.
   useEffect(() => {
     if (!poiLayerGroupRef.current) return;
-
-    // When the POI panel is closed or switched to another tab, remove all POI
-    // markers from the map so they don't linger behind other views.
-    if (!isPoiMode) {
-      poiMarkerRef.current.forEach((marker) => {
-        poiLayerGroupRef.current?.removeLayer(marker);
-      });
-      poiMarkerRef.current.clear();
-      return;
-    }
 
     const visiblePois = pois.filter((poi) => poi.category !== 'BASE_HOME');
     const currentIds = new Set(visiblePois.map((poi) => poi.id));
@@ -602,7 +592,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       poiLayerGroupRef.current?.addLayer(marker);
       poiMarkerRef.current.set(poi.id, marker);
     });
-  }, [pois, isPoiMode]);
+  }, [pois]);
 
   const recenterLkl = () => {
     if (!mapInstanceRef.current) return;

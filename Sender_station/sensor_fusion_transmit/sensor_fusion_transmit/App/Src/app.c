@@ -42,7 +42,13 @@ static ubx_parser_t ubx; static gps_data_t g_gps;
 /* NMEA sentence collection buffer (NEO-M8N defaults to NMEA output) */
 static char nmea_buf[120]; static uint8_t nmea_len; static bool nmea_in_msg;
 static ld_parser_t  ldp; static ld_target_t g_rad;
+static ld_parser_t  ldp_eng; static ld_eng_t g_rad_eng;   /* engineering-mode parser + state */
 static bme_sample_t g_env; static uint8_t g_env_ok, g_bme_ok, g_bme_busy; static uint32_t g_bme_t0;
+/* Radar config state machine (non-blocking, paced between frames) */
+static uint8_t g_rad_cfg_done = 0, g_rad_cfg_step = 0;
+static uint8_t g_rad_cfg_frame[128]; static uint16_t g_rad_cfg_len = 0, g_rad_cfg_off = 0;
+static uint32_t t_rad_cfg = 0;
+#define RADAR_CFG_INTERVAL_MS 120u   /* paced gap between config frames */
 static uint16_t g_seq, g_pktid, g_tx_count, g_retries, g_drops;
 static int8_t g_rssi, g_snr;
 static uint8_t g_estop, g_cmd_seen; static uint16_t g_last_cmd_seq;
@@ -136,7 +142,12 @@ static void tx_try(uint32_t now)
     printf("--> TX_TRY pick=%d type=%d len=%d\r\n", i, (int)e->type, (int)n);
     uint32_t toa = radio_toa_ms((uint8_t)n);
     if (!duty_ok(toa)) return;                                /* wait for budget */
-    if (radio_send(frame, (uint8_t)n) != 0) { printf("radio_send fail\r\n"); return; }
+    if (radio_send(frame, (uint8_t)n) != 0) {
+        printf("radio_send fail\r\n");
+        e->used = 0;          /* release slot so it cannot block the queue forever */
+        g_drops++;            /* surface the drop in telemetry */
+        return;
+    }
     duty_use(toa);
     if (++e->tries > 1) g_retries++;
     g_tx_count++; g_cur = i; g_txs = TX_SENDING; g_tx_started = now;
@@ -175,6 +186,20 @@ __attribute__((weak)) void app_on_cmd(uint8_t cmd, const uint8_t *arg, uint8_t n
         printf("E-STOP received\r\n");
     } else if (cmd == CMD_SYNC_TIME) {
         printf("SYNC_TIME received\r\n");
+    } else if (cmd == CMD_RADAR_SENS && n >= 2) {
+        /* Ground-requested sensitivity: arg[0]=moving, arg[1]=stationary */
+        uint8_t args[2] = { arg[0], arg[1] };
+        ld_send_cmd(&huart5, LD_CMD_SET_SENSITIVITY, args, 2);
+        printf("RADAR_SENS mov=%u stat=%u\r\n", arg[0], arg[1]);
+    } else if (cmd == CMD_RADAR_RANGE && n >= 1) {
+        ld_send_cmd(&huart5, LD_CMD_SET_RANGE_GATE, &arg[0], 1);
+        printf("RADAR_RANGE gate=%u m\r\n", arg[0]);
+    } else if (cmd == CMD_RADAR_BLIND && n >= 1) {
+        ld_send_cmd(&huart5, LD_CMD_SET_BLIND_ZONE, &arg[0], 1);
+        printf("RADAR_BLIND zone=%u cm\r\n", arg[0]);
+    } else if (cmd == CMD_RADAR_ENG_MODE && n >= 1) {
+        ld_send_cmd(&huart5, LD_CMD_SET_ENG_MODE, &arg[0], 1);
+        printf("RADAR_ENG_MODE %s\r\n", arg[0] ? "ON" : "OFF");
     }
 }
 static void handle_rx(const radio_rx_t *r, uint32_t now)
@@ -347,9 +372,13 @@ static void gps_configure(void)
 
     int ok = 1;
     ubx_tx(0x06, 0x01, pvt, 8);   int a1 = ubx_wait_ack(0x06, 0x01); ok &= a1;
+    IWDG->KR = 0x0000AAAAu;       /* kick watchdog between config steps */
     ubx_tx(0x06, 0x01, dop, 8);   int a2 = ubx_wait_ack(0x06, 0x01); ok &= a2;
+    IWDG->KR = 0x0000AAAAu;       /* kick watchdog between config steps */
     ubx_tx(0x06, 0x08, rate, 6);  int a3 = ubx_wait_ack(0x06, 0x08); ok &= a3;
+    IWDG->KR = 0x0000AAAAu;       /* kick watchdog between config steps */
     ubx_tx(0x06, 0x24, nav5, 36); int a4 = ubx_wait_ack(0x06, 0x24); ok &= a4;
+    IWDG->KR = 0x0000AAAAu;       /* kick watchdog between config steps */
     ubx_tx(0x06, 0x23, navx5, 40);int a5 = ubx_wait_ack(0x06, 0x23); ok &= a5;
     printf("GPS config: pvt=%d dop=%d rate=%d nav5=%d aop=%d (all_ok=%d)\r\n", a1, a2, a3, a4, a5, ok);
 }
@@ -435,7 +464,15 @@ void app_init(void)
     HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
     HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
     gps_configure();
-    bucket_t = HAL_GetTick(); bucket_us = BUCKET_MAX_US;
+
+    /* ---- Radar init: non-blocking max-quality config sequence ---- */
+    g_rad_cfg_done = 0; g_rad_cfg_step = 0;
+    g_rad_cfg_len = ld_build_max_config(g_rad_cfg_frame, sizeof g_rad_cfg_frame);
+    g_rad_cfg_off = 0;
+    t_rad_cfg = HAL_GetTick();
+
+    /* Start the independent watchdog once all peripherals are configured */
+    iwdg_init();
     rnd_state ^= DWT->CYCCNT | 1u;
 
     /* Start the independent watchdog once all peripherals are configured */
@@ -612,11 +649,23 @@ void app_loop(void)
         ubx_feed(&ubx, c, &g_gps, now);
     }
     while (rb_get(&ld_rb, &c))
-        if (ld_feed(&ldp, c, &g_rad, now)) {                  /* event-driven radar alert */
+        if (ld_feed(&ldp, c, &g_rad, now)) {                  /* basic-target event */
             uint8_t det = g_rad.state != 0;
             if (det != last_det || (det && now - t_alert >= RADAR_REPEAT_MS)) {
                 send_radar(now); last_det = det; t_alert = now;
             }
+        }
+        /* Also parse engineering-mode frames for per-gate data */
+        if (ld_feed_eng(&ldp_eng, c, &g_rad_eng, now)) {
+            /* engineering mode now valid — dashboard can render range-gate profile */
+            g_rad_eng.t_ms = now;
+        }
+        /* Send radar data every cycle for best quality (not just on change).
+         * This ensures the dashboard always has fresh moving+stationary
+         * distance+energy + engineering-mode gate data. */
+        if (now - t_alert >= 50u) { /* ~20 Hz radar output */
+            send_radar(now);
+            t_alert = now;
         }
 
     radio_rx_t rx; radio_evt_t ev = radio_poll(&rx);
@@ -705,6 +754,25 @@ void app_loop(void)
                 }
             }
         }
+    }
+
+    /* ---- Radar config pacer (non-blocking, sends the full max-quality
+     * config sequence in paced steps so the TX duty-cycle bucket doesn't
+     * overflow and so the ground ESP32 can ACK each frame). ---- */
+    if (!g_rad_cfg_done && now - t_rad_cfg >= RADAR_CFG_INTERVAL_MS) {
+        /* send next chunk of the config sequence */
+        uint8_t chunk = 8u; /* bytes per frame, tuned; 8 works with our frame size */
+        if (g_rad_cfg_off + chunk > g_rad_cfg_len) chunk = (uint8_t)(g_rad_cfg_len - g_rad_cfg_off);
+        if (chunk > 0) {
+            int rc = HAL_UART_Transmit(&huart5, &g_rad_cfg_frame[g_rad_cfg_off], (uint16_t)chunk, 100);
+            if (rc == HAL_OK) {
+                g_rad_cfg_off += chunk;
+                if (g_rad_cfg_off >= g_rad_cfg_len) g_rad_cfg_done = 1;
+            }
+        } else {
+            g_rad_cfg_done = 1;
+        }
+        t_rad_cfg = now;
     }
 
     duty_refill(now);

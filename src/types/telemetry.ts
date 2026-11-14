@@ -33,8 +33,18 @@ export interface EnvData {
 export interface RadarData {
   human_detected: boolean;
   target_state: 'NO_TARGET' | 'MOVING' | 'STATIONARY' | 'COMBINED';
-  distance_cm: number;
-  energy: number; // 0-100
+  // Moving target (separate from stationary — full LD2410B capability)
+  mov_distance_cm: number;
+  mov_energy: number; // 0-100
+  // Stationary target (separate from moving)
+  stat_distance_cm: number;
+  stat_energy: number; // 0-100
+  // Engineering mode: per-range-gate energy (7 gates, 2-8 m)
+  eng_mov_gates: number[];   // length 7, energy per gate for moving
+  eng_stat_gates: number[];  // length 7, energy per gate for stationary
+  eng_valid: boolean;
+  // Presence tracking
+  present_since: number | null; // timestamp when detection started
 }
 
 export interface PowerData {

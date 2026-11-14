@@ -44,10 +44,36 @@ static const char *TAG = "ground_bridge";
 #define MAX_FRAG_PKTS   4
 #define FRAG_TIMEOUT_MS 2000
 
+/* Shadow state (declared here so frag_process() can reference shadow.drop_count) */
 typedef struct {
+    pl_gps_t gps;
+    uint32_t gps_t;
+    pl_radar_t radar;
+    uint32_t radar_t;
+    pl_status_t status;
+    uint32_t status_t;
+    pl_power_t power;
+    uint32_t power_t;
+    pl_env_t env;
+    uint32_t env_t;
+    pl_telem_t telem;
+    uint32_t telem_t;
+    int8_t last_rssi;
+    int8_t last_snr;
+    uint16_t last_seq;
+    uint16_t pkt_count;
+    uint16_t drop_count;
+} shadow_state_t;
+
+static shadow_state_t shadow;
+static uint8_t env_valid = 0;
+static uint8_t walking_latched = 0;
+
+typedef struct {
+    bool in_use;              /* Explicit slot occupancy (replaces pkt_id==0xFFFF sentinel) */
     uint16_t pkt_id;
     uint8_t frag_total;
-    uint8_t frag_mask;      /* Bitmask of received fragments */
+    uint16_t frag_mask;       /* Bitmask of received fragments (supports up to 16 fragments) */
     uint32_t first_rx_ms;
     uint8_t data[255];
     uint8_t data_len;
@@ -58,7 +84,7 @@ static frag_ctx_t frag_slots[MAX_FRAG_PKTS];
 static frag_ctx_t* frag_find(uint16_t pkt_id)
 {
     for (int i = 0; i < MAX_FRAG_PKTS; i++) {
-        if (frag_slots[i].pkt_id == pkt_id) return &frag_slots[i];
+        if (frag_slots[i].in_use && frag_slots[i].pkt_id == pkt_id) return &frag_slots[i];
     }
     return NULL;
 }
@@ -67,7 +93,8 @@ static frag_ctx_t* frag_alloc(uint16_t pkt_id)
 {
     /* Try to find empty slot */
     for (int i = 0; i < MAX_FRAG_PKTS; i++) {
-        if (frag_slots[i].pkt_id == 0xFFFF) {
+        if (!frag_slots[i].in_use) {
+            frag_slots[i].in_use = true;
             frag_slots[i].pkt_id = pkt_id;
             return &frag_slots[i];
         }
@@ -79,6 +106,7 @@ static frag_ctx_t* frag_alloc(uint16_t pkt_id)
             oldest = i;
         }
     }
+    frag_slots[oldest].in_use = true;
     frag_slots[oldest].pkt_id = pkt_id;
     return &frag_slots[oldest];
 }
@@ -86,7 +114,8 @@ static frag_ctx_t* frag_alloc(uint16_t pkt_id)
 static void frag_init(void)
 {
     for (int i = 0; i < MAX_FRAG_PKTS; i++) {
-        frag_slots[i].pkt_id = 0xFFFF;
+        frag_slots[i].in_use = false;
+        frag_slots[i].pkt_id = 0;
         frag_slots[i].frag_mask = 0;
     }
 }
@@ -119,8 +148,10 @@ static int frag_process(const pl_frag_t *fh, const uint8_t *payload, uint8_t len
     
     /* Check timeout */
     if (now - slot->first_rx_ms > FRAG_TIMEOUT_MS) {
-        ESP_LOGW(TAG, "Frag timeout pkt_id=%u", fh->pkt_id);
-        slot->pkt_id = 0xFFFF;
+        ESP_LOGW(TAG, "Frag timeout pkt_id=%u, dropping incomplete packet", fh->pkt_id);
+        shadow.drop_count++;
+        slot->in_use = false;
+        slot->pkt_id = 0;
         slot = frag_alloc(fh->pkt_id);
         slot->frag_total = fh->frag_total;
         slot->frag_mask = 0;
@@ -141,11 +172,12 @@ static int frag_process(const pl_frag_t *fh, const uint8_t *payload, uint8_t len
     }
     
     /* Check if complete */
-    uint8_t expected_mask = (fh->frag_total == 8) ? 0xFF : ((1 << fh->frag_total) - 1);
+    uint16_t expected_mask = (fh->frag_total == 16) ? 0xFFFFu : ((1u << fh->frag_total) - 1u);
     if (slot->frag_mask == expected_mask) {
         memcpy(out, slot->data, slot->data_len);
         int complete_len = slot->data_len;
-        slot->pkt_id = 0xFFFF; /* Free slot */
+        slot->in_use = false; /* Free slot */
+        slot->pkt_id = 0;
         return complete_len;
     }
     
@@ -156,29 +188,6 @@ static int frag_process(const pl_frag_t *fh, const uint8_t *payload, uint8_t len
  * Shadow State (per subsystem)
  * ============================================================================
  */
-typedef struct {
-    pl_gps_t gps;
-    uint32_t gps_t;
-    pl_radar_t radar;
-    uint32_t radar_t;
-    pl_status_t status;
-    uint32_t status_t;
-    pl_power_t power;
-    uint32_t power_t;
-    pl_env_t env;
-    uint32_t env_t;
-    pl_telem_t telem;
-    uint32_t telem_t;
-    int8_t last_rssi;
-    int8_t last_snr;
-    uint16_t last_seq;
-    uint16_t pkt_count;
-    uint16_t drop_count;
-} shadow_state_t;
-
-static shadow_state_t shadow;
-static uint8_t env_valid = 0;
-static uint8_t walking_latched = 0;
 
 static void shadow_init(void)
 {
@@ -251,6 +260,130 @@ static void shadow_update(uint8_t type, const uint8_t *pl, uint8_t len, int8_t r
 }
 
 /* ============================================================================
+ * Replay protection (SEC-02): per-source sequence bitmap window.
+ * Replayed or out-of-order packets are dropped and counted in shadow.drop_count.
+ * ============================================================================
+ */
+#define REPLAY_WINDOW 16
+typedef struct { uint16_t last_seq; uint16_t bitmap; } replay_window_t;
+static replay_window_t rx_window[2]; /* indexed by src & 1 (ADDR_ROBOT=1, ADDR_GROUND=2) */
+
+/**
+ * @brief Replay check: returns 1 if the (src, seq) pair is fresh, 0 if replayed.
+ * Uses a sliding bitmap window per source address.
+ */
+static int replay_check(uint8_t src, uint16_t seq)
+{
+    replay_window_t *w = &rx_window[src & 1];
+    if (w->last_seq == 0xFFFF) { w->last_seq = seq; w->bitmap = 1u; return 1; }
+    int16_t delta = (int16_t)(seq - w->last_seq);
+    if (delta <= 0) return 0;                      /* stale or duplicate */
+    if (delta >= REPLAY_WINDOW) { w->last_seq = seq; w->bitmap = 1u; return 1; } /* jumped ahead */
+    if (w->bitmap & (1u << (delta - 1))) return 0; /* already seen in window */
+    w->bitmap = (w->bitmap << delta) | 1u;
+    w->last_seq = seq;
+    return 1;
+}
+
+/* ============================================================================
+ * Serial command forwarding (dashboard -> STM32 via LoRa PKT_CMD)
+ * Reads text commands from UART0, parses them, and forwards as PKT_CMD
+ * frames to the robot. Text protocol (newline-delimited):
+ *   RADAR_SENS <mov> <stat>   set moving/stationary sensitivity (1-9)
+ *   RADAR_RANGE <gate>        set max range gate (2-8 m)
+ *   RADAR_BLIND <cm>          set blind zone (0-255 cm)
+ *   RADAR_ENG <0|1>           engineering mode off/on
+ *   ESTOP                     emergency stop
+ * ============================================================================ */
+#define SERIAL_CMD_BUF 128
+static char s_serial_cmd[SERIAL_CMD_BUF];
+static uint8_t s_serial_len = 0;
+
+/**
+ * @brief Parse a text command line and forward as PKT_CMD to the robot.
+ * Returns 0 on success, <0 on error.
+ */
+static int serial_forward_cmd(const char *line, uint8_t len)
+{
+    /* Trim trailing whitespace/newline */
+    char cmd[SERIAL_CMD_BUF];
+    if (len >= SERIAL_CMD_BUF) len = SERIAL_CMD_BUF - 1;
+    memcpy(cmd, line, len);
+    cmd[len] = '\0';
+    /* Strip \r \n */
+    for (int i = 0; i < len; i++) {
+        if (cmd[i] == '\r' || cmd[i] == '\n') { cmd[i] = '\0'; break; }
+    }
+
+    uint8_t pl[8]; uint8_t n = 0; uint8_t opcode = 0;
+
+    if (strncmp(cmd, "RADAR_SENS", 10) == 0) {
+        opcode = CMD_RADAR_SENS;
+        int a = 0, b = 0;
+        if (sscanf(cmd + 10, " %d %d", &a, &b) == 2) {
+            pl[n++] = (uint8_t)a; pl[n++] = (uint8_t)b;
+        } else return -1;
+    } else if (strncmp(cmd, "RADAR_RANGE", 11) == 0) {
+        opcode = CMD_RADAR_RANGE;
+        int a = 0;
+        if (sscanf(cmd + 11, " %d", &a) == 1) {
+            pl[n++] = (uint8_t)a;
+        } else return -1;
+    } else if (strncmp(cmd, "RADAR_BLIND", 11) == 0) {
+        opcode = CMD_RADAR_BLIND;
+        int a = 0;
+        if (sscanf(cmd + 11, " %d", &a) == 1) {
+            pl[n++] = (uint8_t)a;
+        } else return -1;
+    } else if (strncmp(cmd, "RADAR_ENG", 9) == 0) {
+        opcode = CMD_RADAR_ENG_MODE;
+        int a = 0;
+        if (sscanf(cmd + 9, " %d", &a) == 1) {
+            pl[n++] = (uint8_t)(a ? 1 : 0);
+        } else return -1;
+    } else if (strcmp(cmd, "ESTOP") == 0) {
+        opcode = CMD_ESTOP;
+        n = 0;
+    } else {
+        return -1; /* unknown command */
+    }
+
+    /* Build and send PKT_CMD frame to robot (ADDR_ROBOT) */
+    uint8_t frame[PROTO_MAX_FRAME];
+    size_t flen = proto_build(frame, PKT_CMD, FLAG_ACK_REQ, 0, ADDR_ROBOT, pl, n);
+    if (flen == 0) return -2;
+    int rc = radio_send(frame, (uint8_t)flen);
+    if (rc != 0) return -3;
+    ESP_LOGI(TAG, "Fwd cmd opcode=0x%02x len=%u to robot", opcode, n);
+    return 0;
+}
+
+/**
+ * @brief Poll UART0 for incoming command lines and forward them.
+ * Call from app_main loop. Non-blocking.
+ */
+void ground_bridge_poll_serial(void)
+{
+#if !USE_NATIVE_USB_CDC
+    /* UART0: read available bytes */
+    uint8_t buf[32];
+    int rd = uart_read_bytes(UART_NUM_0, buf, sizeof(buf), 0);
+    if (rd <= 0) return;
+    for (int i = 0; i < rd; i++) {
+        char c = (char)buf[i];
+        if (c == '\n' || c == '\r') {
+            if (s_serial_len > 0) {
+                serial_forward_cmd(s_serial_cmd, s_serial_len);
+                s_serial_len = 0;
+            }
+        } else if (s_serial_len < SERIAL_CMD_BUF - 1) {
+            s_serial_cmd[s_serial_len++] = c;
+        }
+    }
+#endif
+}
+
+/* ============================================================================
  * JSON Emission over USB-CDC
  * ============================================================================
  */
@@ -284,7 +417,18 @@ static void emit_json(void)
     double voltage_v = shadow.power.est_mv / 1000.0;
     double current_a = shadow.power.est_ma / 1000.0;
     
-    double radar_dist_cm = shadow.radar.mov_dist_cm;
+    double radar_dist_cm = 0.0;
+    uint8_t radar_energy = 0;
+    if (shadow.radar.target_state == 1) {
+        radar_dist_cm = shadow.radar.mov_dist_cm;
+        radar_energy = shadow.radar.mov_energy;
+    } else if (shadow.radar.target_state == 2) {
+        radar_dist_cm = shadow.radar.stat_dist_cm;
+        radar_energy = shadow.radar.stat_energy;
+    } else if (shadow.radar.target_state == 3) {
+        radar_dist_cm = (shadow.radar.mov_dist_cm > 0) ? shadow.radar.mov_dist_cm : shadow.radar.stat_dist_cm;
+        radar_energy = (shadow.radar.mov_energy > shadow.radar.stat_energy) ? shadow.radar.mov_energy : shadow.radar.stat_energy;
+    }
     
     /* Derive bot uptime from telemetry summary (pl_telem_t.uptime_s) when
      * a telemetry packet has been received; fall back to system uptime. */
@@ -367,7 +511,7 @@ static void emit_json(void)
         (is_env_valid ? "true" : "false"),
         shadow.radar.human ? "true" : "false",
         shadow.radar.target_state == 0 ? "NO_TARGET" : (shadow.radar.target_state == 1 ? "MOVING" : (shadow.radar.target_state == 2 ? "STATIONARY" : "COMBINED")),
-        radar_dist_cm, shadow.radar.mov_energy,
+        radar_dist_cm, (unsigned int)radar_energy,
         voltage_v, current_a, (unsigned int)shadow.power.est_soc,
         voltage_v / 3.0, voltage_v / 3.0, voltage_v / 3.0,
         motor_count, motor_temp, motor_temp + 1.5,
@@ -445,6 +589,13 @@ void ground_bridge_process_frame(const uint8_t *buf, uint8_t len, int8_t rssi, i
     /* Check destination */
     if (h.dst != ADDR_GROUND) {
         ESP_LOGD(TAG, "Frame not for ground: dst=0x%02x", h.dst);
+        return;
+    }
+    
+    /* Replay protection (SEC-02): drop replayed/old packets */
+    if (!replay_check(h.src, h.seq)) {
+        ESP_LOGW(TAG, "Replay detected: src=%u seq=%u", h.src, h.seq);
+        shadow.drop_count++;
         return;
     }
     

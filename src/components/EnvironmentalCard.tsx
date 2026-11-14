@@ -6,7 +6,7 @@ interface EnvironmentalCardProps {
   env: EnvData | null;
 }
 
-export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => {
+export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = React.memo(({ env }) => {
   const hasReading = env !== null && (env.valid ?? (
     env.temp_c !== 0 || env.pressure_hpa !== 0 || env.humidity_pct !== 0
   ));
@@ -111,4 +111,6 @@ export const EnvironmentalCard: React.FC<EnvironmentalCardProps> = ({ env }) => 
       </div>
     </div>
   );
-};
+});
+
+EnvironmentalCard.displayName = 'EnvironmentalCard';

@@ -22,4 +22,10 @@ void ground_bridge_init(void);
  */
 void ground_bridge_process_frame(const uint8_t *buf, uint8_t len, int8_t rssi, int8_t snr);
 
+/**
+ * @brief Poll UART0 for incoming dashboard command lines and forward as PKT_CMD.
+ * Non-blocking; call from app_main loop.
+ */
+void ground_bridge_poll_serial(void);
+
 #endif /* GROUND_BRIDGE_H */

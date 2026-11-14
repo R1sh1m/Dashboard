@@ -71,8 +71,8 @@ All pin assignments below match `sensor_fusion_transmit.ioc` (CubeMX config). Ve
 |-----------|---------------|-----------------|------------|----------|
 | VCC | **5V** | CN8 / 9 | 5V | Power (5V required) |
 | GND | GND | CN8 / 11 | GND | Ground |
-| TX | — | CN9 / 5 | PD2 | UART5_RX (Radar TX → Nucleo RX) |
-| RX | — | CN9 / 3 | PC12 | UART5_TX (Nucleo TX → Radar RX) |
+| TX | — | CN8 / 12 (or CN11 / 4) | PD2 | UART5_RX (Radar TX → Nucleo RX) |
+| RX | — | CN8 / 10 (or CN11 / 3) | PC12 | UART5_TX (Nucleo TX → Radar RX) |
 
 > **Cross TX/RX:** Radar TX → Nucleo PD2. Nucleo PC12 → Radar RX.  
 > Baud rate: 115200. Radar needs 5V power, not 3.3V.

@@ -20,7 +20,9 @@ enum {
     PKT_POWER_CRIT   = 0x04, PKT_TELEMETRY   = 0x05, PKT_MOTORS_DELTA = 0x06,
     PKT_ENV          = 0x07, PKT_CMD         = 0x08, PKT_ACK          = 0x09
 };
-enum { CMD_ESTOP = 0x01, CMD_SYNC_TIME = 0x02 };
+enum { CMD_ESTOP = 0x01, CMD_SYNC_TIME = 0x02,
+       CMD_RADAR_SENS = 0x10, CMD_RADAR_RANGE = 0x11,
+       CMD_RADAR_BLIND = 0x12, CMD_RADAR_ENG_MODE = 0x13 };
 
 #define PROTO_HDR_LEN      10u   /* sum of the fields in Table 1 (the PDF says 11 - see notes) */
 #define PROTO_CRC_LEN      2u

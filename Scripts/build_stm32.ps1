@@ -186,6 +186,10 @@ $linkArgs = @(
     "-T$PROJECT/STM32F722ZETX_FLASH.ld"
     "-Wl,-Map,$MAP"
     "-Wl,--gc-sections"
+)
+# Add object files before library resolution group
+foreach ($obj in $OBJECTS) { $linkArgs += $obj }
+$linkArgs += @(
     "-Wl,--start-group"
     "-lc"
     "-lm"
@@ -193,8 +197,6 @@ $linkArgs = @(
     "-Wl,--end-group"
     "-o$ELF"
 )
-# Add object files as separate arguments
-foreach ($obj in $OBJECTS) { $linkArgs += $obj }
 
 & $CC $linkArgs 2>&1 | ForEach-Object { Write-Host "    $_" }
 if ($LASTEXITCODE -ne 0) {

@@ -1537,6 +1537,27 @@ body {
 }
 
 /* Final pane refinements override the legacy sheet rules above. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse { animation: none !important; }
+  .pulse-beacon::after { animation: none !important; }
+  .lkl-btn { transition: none !important; }
+}
+
+/* prefers-reduced-transparency: replace backdrop-filter with solid rgba */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--color-surface-dark) !important;
+  }
+  .glass-panel-subtle {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+  }
+}
+
+/* telemetry-tab-primary.is-selected */
 .telemetry-tab-primary.is-selected {
   color: #fff;
   background: #0a84ff;
@@ -2994,6 +3015,27 @@ select:focus-visible {
 }
 
 /* Final pane refinements override the legacy sheet rules above. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse { animation: none !important; }
+  .pulse-beacon::after { animation: none !important; }
+  .lkl-btn { transition: none !important; }
+}
+
+/* prefers-reduced-transparency: replace backdrop-filter with solid rgba */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--color-surface-dark) !important;
+  }
+  .glass-panel-subtle {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+  }
+}
+
+/* telemetry-tab-primary.is-selected */
 .telemetry-tab-primary.is-selected {
   color: #fff;
   background: #0a84ff;
