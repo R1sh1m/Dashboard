@@ -32,10 +32,11 @@ jobs:
 
       # electron-builder may rebuild native modules (e.g. serialport) against
       # Electron's ABI. Point node-gyp at the Visual Studio 2022 toolchain
-      # that is pre-installed on windows-latest. If a native-module rebuild
-      # still fails, add a step here to install windows-build-tools.
+      # that is pre-installed on windows-latest via the npm_config_msvs_version
+      # env var (node-gyp reads it from npm config). `npm config set` is not
+      # valid for this key in npm 11+, so we set it as an env var instead.
       - name: Configure MSBuild toolset (2022) for native module rebuilds
-        run: npm config set msvs_version 2022
+        run: echo "npm_config_msvs_version=2022" >> $env:GITHUB_ENV
 
       - name: Build Electron installer (NSIS)
         run: npm run electron:build
