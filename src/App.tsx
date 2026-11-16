@@ -5,7 +5,8 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { PoiModal } from './components/PoiModal';
 import { SensorSheet, type SubsystemTab } from './components/SensorSheet';
 import type { GpsData, LogEntry, PointOfInterest, TelemetryPacket } from './types/telemetry';
-import { serialService, type SerialConnectionStatus } from './services/webSerial';
+import { telemetryClient } from './services/telemetryClient';
+import type { SerialConnectionStatus } from './services/telemetryTransport';
 import { poiDatabase } from './services/poiDatabase';
 import { MAP_TYPE_ORDER, type MapType } from './lib/mapLayers';
 
@@ -246,7 +247,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    serialService.setCallbacks({
+    telemetryClient.setCallbacks({
       onPacket: handleIncomingPacket,
       onGps: handleIncomingGps,
       onRawLine: (line) => { if (!line.startsWith('{')) addLog('RAW', 'SERIAL', line); },
@@ -257,20 +258,20 @@ export function App() {
         if (status === 'ERROR') addLog('ERR', 'SERIAL', error || 'Serial communication error');
       },
     });
-    void serialService.autoConnect();
+    void telemetryClient.connect();
   }, [addLog, baudRate, handleIncomingGps, handleIncomingPacket]);
 
-  const connectSerial = async () => { serialService.setBaudRate(baudRate); await serialService.connect(); };
-  const disconnectSerial = async () => serialService.disconnect();
+  const connectSerial = async () => { telemetryClient.setBaudRate(baudRate); await telemetryClient.connect(); };
+  const disconnectSerial = async () => telemetryClient.disconnect();
   const triggerEStop = async () => {
     addLog('ERR', 'CMD', 'EMERGENCY STOP (E-STOP) BROADCAST SENT TO ESP32');
     let estopSent = false;
     if (serialStatus === 'CONNECTED') {
-      estopSent = await serialService.sendCommand('ESTOP');
+      estopSent = await telemetryClient.sendCommand('ESTOP');
     }
     // Sever the connection with the Ground ESP32 on e-stop only after
     // attempting to send the command. Honor the send result explicitly.
-    await serialService.disconnect();
+    await telemetryClient.disconnect();
     addLog(
       'WARN',
       'SERIAL',
@@ -294,13 +295,13 @@ export function App() {
       return false;
     }
     setIsSendingRadarConfig(true);
-    const ok1 = await serialService.sendCommand(`RADAR_SENS ${radarSettings.mov_sens} ${radarSettings.stat_sens}`);
+    const ok1 = await telemetryClient.sendCommand(`RADAR_SENS ${radarSettings.mov_sens} ${radarSettings.stat_sens}`);
     await new Promise((r) => setTimeout(r, 120));
-    const ok2 = await serialService.sendCommand(`RADAR_RANGE ${radarSettings.range_gate}`);
+    const ok2 = await telemetryClient.sendCommand(`RADAR_RANGE ${radarSettings.range_gate}`);
     await new Promise((r) => setTimeout(r, 120));
-    const ok3 = await serialService.sendCommand(`RADAR_BLIND ${radarSettings.blind_zone_cm}`);
+    const ok3 = await telemetryClient.sendCommand(`RADAR_BLIND ${radarSettings.blind_zone_cm}`);
     await new Promise((r) => setTimeout(r, 120));
-    const ok4 = await serialService.sendCommand(`RADAR_ENG ${radarSettings.eng_mode ? 1 : 0}`);
+    const ok4 = await telemetryClient.sendCommand(`RADAR_ENG ${radarSettings.eng_mode ? 1 : 0}`);
     setIsSendingRadarConfig(false);
     addLog(
       'INFO',
