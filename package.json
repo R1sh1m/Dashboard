@@ -2,6 +2,7 @@
   "name": "artemis-ground-station",
   "version": "1.0.0",
   "type": "module",
+  "main": "electron/dist/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -9,37 +10,62 @@
     "test": "vitest run",
     "preview": "vite preview",
     "server:start": "node --import tsx/esm server/index.ts",
-    "serve:all": "npm run build && npm run server:start"
+    "serve:all": "npm run build && npm run server:start",
+    "electron:build-main": "tsc -p tsconfig.electron.json",
+    "electron": "npm run electron:build-main && electron .",
+    "electron:build": "npm run build && npm run electron:build-main && electron-builder",
+    "package": "electron-builder"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "electron-store": "^9.0.0",
+    "express": "^4.19.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "serialport": "^12.0.0",
     "sql.js": "^1.15.2",
-    "express": "^4.19.2",
-    "ws": "^8.18.0",
-    "cors": "^2.8.5",
-    "serialport": "^12.0.0"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^24.19.2",
-    "@types/express": "^4.17.21",
-    "@types/ws": "^8.5.12",
-    "@types/cors": "^2.8.17",
-    "tsx": "^4.19.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/sql.js": "^1.4.11",
+    "@types/ws": "^8.5.12",
     "@vitejs/plugin-react": "^6.2.1",
+    "electron": "^33.2.0",
+    "electron-builder": "^26.18.0",
     "jsdom": "^31.0.0",
     "oxlint": "^1.88.0",
+    "tsx": "^4.19.0",
     "typescript": "~6.0.3",
     "vite": "^8.3.4",
     "vitest": "^5.1.0"
+  },
+  "build": {
+    "appId": "com.artemis.groundstation",
+    "productName": "Artemis Ground Station",
+    "files": [
+      "dist/**",
+      "electron/dist/**",
+      "electron/installer/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "publisherName": "Team Artemis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
