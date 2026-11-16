@@ -199,6 +199,50 @@ npm run build   # Type-check and bundle for production
 npm run preview # Serve the built files locally
 ```
 
+### Multi-Device Field Access (WebSocket Bridge)
+
+The laptop plugged into the ESP32 via USB can act as a host server so tablets and phones on the same Wi-Fi/hotspot can view and control the dashboard in real time.
+
+```bash
+npm run build   # Build the dashboard
+npm run server:start  # Start Express + WebSocket bridge on port 3001
+```
+
+Or in one step:
+
+```bash
+npm run serve:all   # Build + start the bridge server
+```
+
+The server logs the local and LAN URLs on startup:
+
+```
+=== Artemis Ground Bridge Server ===
+Listening on http://localhost:3001
+Listening on http://192.168.43.1:3001   # your laptop's Wi-Fi IP
+WebSocket at ws://localhost:3001/ws
+```
+
+**Connect from a tablet/phone** (same Wi-Fi or phone hotspot):
+
+```
+http://<laptop-wifi-ip>:3001
+```
+
+Example: `http://192.168.43.1:3001`
+
+**Health check:**
+
+```
+GET http://<laptop-wifi-ip>:3001/api/status
+```
+
+**Windows Firewall:** If the tablet can't reach the laptop, allow inbound TCP port 3001 in Windows Defender Firewall (or run `netsh advfirewall firewall add rule name="Artemis Bridge" dir=in action=allow protocol=TCP localport=3001` as Administrator).
+
+**Transport modes:** The dashboard defaults to the WebSocket bridge. On the laptop with the ESP32 plugged in via USB, you can toggle to direct WebSerial transport if needed. Tablets and phones always use the WebSocket bridge (Web Serial API is not supported on mobile browsers).
+
+**Note:** The ESP32 must be physically plugged into the laptop's USB port for live telemetry. The tablet/phone cannot reach the laptop's USB ports directly — the bridge server relays all telemetry and commands over WebSocket.
+
 ---
 
 ## External APIs & Services
@@ -206,6 +250,7 @@ npm run preview # Serve the built files locally
 | API / Service | Purpose | Used In |
 |---------------|---------|---------|
 | **Web Serial API** (browser) | Opens USB-CDC ports, reads newline-delimited JSON telemetry, sends text commands to the ESP32. | `src/services/webSerial.ts` |
+| **WebSocket** | Bi-directional telemetry and command relay between bridge server and tablet/phone clients. | `server/index.ts`, `src/services/wsSerial.ts` |
 | **Leaflet + OpenStreetMap tiles** | Interactive map rendering, rover position tracking, waypoint navigation. | `src/components/MapView.tsx` |
 | **Lucide React** | Vector iconography for UI controls, status badges, and navigation. | All UI components |
 
@@ -214,8 +259,9 @@ npm run preview # Serve the built files locally
 | Interface | Description |
 |-----------|-------------|
 | **Telemetry JSON** | Subscribe to the `onPacket` callback to receive typed `TelemetryPacket` objects. |
-| **Command Interface** | `WebSerialManager.sendCommand(cmd)` writes a line-terminated string to the ESP32. Commands: `STOP` (emergency stop), `HOME` (recenter map), `PING` (health check). |
-| **Simulator** | `src/services/simulator.ts` generates mock telemetry for development without hardware. |
+| **Command Interface** | `telemetryClient.sendCommand(cmd)` sends a text command to the ESP32 (via WebSocket bridge or direct WebSerial). Commands: `ESTOP` (emergency stop), `RADAR_SENS`, `RADAR_RANGE`, `RADAR_BLIND`, `RADAR_ENG`. |
+| **WebSocket Wire Protocol** | Server→Client: `TELEMETRY`, `GPS`, `RAW`, `STATUS`, `HYDRATE`. Client→Server: `COMMAND`. See `server/types.ts`. |
+| **Unified Transport** | `ITelemetryService` (`src/services/telemetryTransport.ts`) abstracts the transport layer so the UI works identically over WebSocket bridge or direct WebSerial. |
 
 ---
 
@@ -224,9 +270,17 @@ npm run preview # Serve the built files locally
 ```
 artemis-dashboard/
 ├── public/                 # Static assets (logo, favicons)
+├── server/                 # WebSocket bridge server (Express + ws + serialport)
+│   ├── index.ts            # Express + WebSocket server, serial port management
+│   ├── portDetector.ts     # Auto-detect ESP32 USB-UART ports
+│   └── types.ts            # WebSocket wire protocol frame types
 ├── src/
 │   ├── components/         # React UI components
-│   ├── services/           # Serial & simulator services
+│   ├── services/           # Telemetry transports (WebSerial, WebSocket, unified client)
+│   │   ├── webSerial.ts    # Direct USB-CDC to ESP32 (Web Serial API)
+│   │   ├── wsSerial.ts     # WebSocket client to bridge server
+│   │   ├── telemetryClient.ts  # Unified transport facade
+│   │   └── telemetryTransport.ts # ITelemetryService interface
 │   ├── types/              # Telemetry TypeScript definitions
 │   ├── App.tsx             # Root component
 │   └── main.tsx            # Entry point
@@ -251,6 +305,7 @@ artemis-dashboard/
 | [`Docs/ESP32_LoRa_Wiring.md`](Docs/ESP32_LoRa_Wiring.md) | ESP32 → SX1262 wiring details |
 | [`Docs/STM32_Sender.md`](Docs/STM32_Sender.md) | STM32 sender build & flash guide |
 | [`Docs/DESIGN.md`](Docs/DESIGN.md) | Dashboard UI/UX design system |
+| [`Docs/MULTI_DEVICE_SETUP.md`](Docs/MULTI_DEVICE_SETUP.md) | Multi-device field setup (tablet/phone access via WebSocket bridge) |
 
 ---
 

@@ -47,7 +47,42 @@ This table locks in the exact physical wiring connections on the NUCLEO-F722ZE b
 ## 2. Power Rail Distribution Architecture
 
 > [!IMPORTANT]
-> The LCD backpack and LD2412 Radar must receive **5V** to operate reliably. Connecting the LCD to 3.3V results in an unreadable faint display or unlit backlight. Connecting the radar to 3.3V causes brownouts.
+> The LCD backpack and LD2412 Radar must receive **5V** to operate reliably when using their 5V pins. Connecting the LCD to 3.3V results in an unreadable faint display or unlit backlight. Connecting the radar 5V pin to 3.3V causes brownouts.
+
+### LD2412 Hot-Plug Inrush & LCD 1602 Brownout Mitigation
+When the LD2412 mmWave radar is plugged in while the board is running (hot-plugged), the 1602 I2C LCD may instantly go blank. This happens due to two interacting factors:
+1. **5V Rail Voltage Sag & HD44780 Controller Drop**:
+   * Both the LCD backpack and the LD2412 share the **5V rail (`CN8` Pin 9)**, which is current-limited to 500 mA by the ST-LINK USB power switch.
+   * The LD2412 contains significant input decoupling capacitance and an active 24 GHz FMCW RF front-end. Hot-plugging it into a live 5V pin creates a steep instantaneous inrush current spike, pulling the 5V rail below ~4.5V for several milliseconds.
+   * The HD44780 LCD controller's internal Power-On Reset (POR) circuit trips at ~4.5V, resetting the display controller into default **8-bit mode with Display OFF**.
+   * Meanwhile, the PCF8574 I2C backpack stays alive down to 2.5V and continues to ACK I2C writes. The MCU previously had no way of knowing the LCD controller browned out.
+2. **Firmware Self-Healing & Auto-Recovery**:
+   * `lcd_i2c.c` now validates all `HAL_I2C_Master_Transmit` operations and resets the I2C bus if a transient occurs.
+   * A dedicated `lcd_reinit()` function quickly sends the 4-bit HD44780 reset sequence (`0x30, 0x30, 0x30, 0x20, 0x28, 0x0C`) to restore the display in <30ms without a full bus scan.
+   * `app.c` detects incoming radar streams and automatically triggers `lcd_reinit()` the moment the radar is connected.
+   * If any LCD write fails, `g_lcd_ok` resets to 0 and the background scheduler auto-recovers the display every 1500 ms.
+3. **Hardware Best Practices**:
+   * **Do not hot-plug**: Always plug or unplug the radar module before connecting USB power.
+   * **Buffer capacitor**: Place a 100µF–470µF electrolytic capacitor across 5V and GND at the breadboard to cushion inrush surges.
+   * **Pin header insertion**: CN8 pins 9 (5V), 10 (PC12), 11 (GND), and 12 (PD2) are directly adjacent. Never insert DuPont jumpers at an angle while powered to avoid accidental 5V-to-GND shorts.
+
+### 3.3V vs 5V Radar Module Variants (Robu / Bare Breakout Caution)
+* **Standard 6-pin HLK-LD2412**: Features pins `OUT, TX, RX, GND, 5V, 3V3`. It contains an onboard LDO and can take either 5V on the `5V` pin OR 3.3V on `3V3` (never both).
+* **4-pin Breakout (`3V3, GND, TX, RX`)**: This variant directly powers the SoC from the `3V3` pin without a 5V buck/LDO. **Never supply 5V to a 3.3V-only radar breakout**; doing so will cause thermal breakdown / latchup, turning the chip into a permanent dead short that pulls down the system power rails, distorts LCD contrast, and trips host USB overcurrent limits.
+* **LCD Contrast Tuning**: The 1602 LCD I2C backpack contains a blue trimpot. Turn the brass screw clockwise/counter-clockwise with the board powered at 5V to dial in the contrast until characters appear sharp.
+
+### LD2412 Thermal Management & Overheating Mitigation
+The Hi-Link HLK-LD2412 is a 24 GHz FMCW radar with a dual-core SoC and integrated 2.4 GHz Bluetooth (BLE) radio. When running out of the box, it can run hot (50°C–65°C) due to two distinct factors:
+
+1. **Bluetooth (BLE) Radio Broadcast (Firmware Mitigation)**:
+   * By default, the LD2412 broadcasts Bluetooth advertisements continuously for the smartphone app.
+   * In our rover architecture, the radar is connected directly to STM32 `UART5` (PC12/PD2). Bluetooth is completely unused.
+   * The STM32 firmware runs a bounded init-time configuration sequence (`ld_radar_config_step` in `app.c`) that: enables configuration mode, enables engineering mode (`0x0062`), sets base parameters (min gate 1, max gate 13, 5 s dwell), sets per-gate motion/static sensitivity (80 across all 14 gates), and ends configuration. Bluetooth is disabled via `0x00A4` value `0x0000`. This reduces power consumption by 35–45% and drops operating temperature by ~15°C–20°C.
+
+2. **On-Module Linear LDO Regulator Heat (Hardware Wiring Note)**:
+   * When powered via the **`+5V`** pin, an onboard tiny linear regulator (LDO) on the LD2412 module drops 5.0V to 3.3V, dissipating `(5.0V - 3.3V) * ~100mA ≈ 170mW` of pure heat on a microscopic SMD package.
+   * If your LD2412 breakout exposes the **`3V3`** pin (instead of only +5V), connecting a clean 3.3V power source to the `3V3` pin completely bypasses the onboard LDO, eliminating this heat source entirely.
+   * If using the `+5V` pin, ensure the radar module has ambient air clearance and is not enclosed tightly against insulating foam or tape.
 
 * **3.3V Rail (`CN8` Pin 7)**:
   * SX1262 LoRa Radio (peak ~120 mA during TX)
