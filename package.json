@@ -4,7 +4,7 @@
   "description": "Real-time telemetry and control interface for Team Artemis autonomous rover operations",
   "author": "Team Artemis",
   "type": "module",
-  "main": "electron/dist/main.js",
+  "main": "electron/dist/electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "server:start": "node --import tsx/esm server/index.ts",
     "serve:all": "npm run build && npm run server:start",
-    "electron:build-main": "tsc -p tsconfig.electron.json",
+    "electron:build-main": "tsc -p tsconfig.electron.json && tsc -p tsconfig.server-for-electron.json",
     "electron": "npm run electron:build-main && electron .",
     "electron:build": "npm run build && npm run electron:build-main && electron-builder --win --config electron-builder.config.json",
     "package": "electron-builder"

@@ -6,8 +6,7 @@
   },
   "files": [
     "dist/**",
-    "electron/dist/**",
-    "electron/installer/**"
+    "electron/dist/**"
   ],
   "win": {
     "target": [
