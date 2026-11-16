@@ -1,13 +1,13 @@
 {
   "appId": "com.artemis.groundstation",
   "productName": "Artemis Ground Station",
+  "directories": {
+    "output": "release"
+  },
   "files": [
     "dist/**",
     "electron/dist/**",
     "electron/installer/**"
-  ],
-  "extraResources": [
-    "dist/**"
   ],
   "win": {
     "target": [
