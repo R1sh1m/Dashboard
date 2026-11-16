@@ -5,6 +5,7 @@ import { SerialPort } from 'serialport';
 import cors from 'cors';
 import os from 'os';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { findEsp32Port, watchEsp32Port } from './portDetector.js';
 import type { TelemetryPacket } from '../src/types/telemetry.js';
@@ -16,7 +17,43 @@ const port = parseInt(process.env.PORT ?? '3001');
 // Resolve dist directory robustly on Windows (file:// URL pathname handling)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const distDir = path.resolve(__dirname, '..', 'dist');
+
+/**
+ * Resolve the `dist/` directory for serving static files.
+ * Handles Electron ASAR packaging where `__dirname` may point inside
+ * an `.asar` archive and the real `dist/` lives alongside the app.
+ */
+function resolveDistDir(): string {
+  // 1. Standard path: server/../dist (works in dev and unbundled builds)
+  const standardDist = path.resolve(__dirname, '..', 'dist');
+  if (fs.existsSync(path.join(standardDist, 'index.html'))) {
+    return standardDist;
+  }
+
+  // 2. Electron ASAR: process.resourcesPath/app/dist
+  const resourcesPath = (process as { resourcesPath?: string }).resourcesPath;
+  if (typeof resourcesPath === 'string') {
+    const asarDist = path.join(resourcesPath, 'app', 'dist');
+    if (fs.existsSync(path.join(asarDist, 'index.html'))) {
+      return asarDist;
+    }
+  }
+
+  // 3. Fallback: two levels up from __dirname (covers nested packaging)
+  const fallbackDist = path.resolve(__dirname, '..', '..', 'dist');
+  if (fs.existsSync(path.join(fallbackDist, 'index.html'))) {
+    return fallbackDist;
+  }
+
+  // 4. Last resort: return the standard path so express.static logs a clear error
+  console.warn(
+    `[dist] Could not locate dist/index.html. Checked: ${standardDist}, ${fallbackDist}. ` +
+    'Serving from ' + standardDist + ' (files may not be found).'
+  );
+  return standardDist;
+}
+
+const distDir = resolveDistDir();
 
 // CORS enabled for LAN access
 app.use(cors({ origin: true }));
@@ -217,16 +254,50 @@ async function openSerialPort(portPath: string) {
 
 // --- Server setup ---
 
+/**
+ * Start the HTTP server with port-in-use protection.
+ * If the configured port is already bound, logs an error and tries an alternate port.
+ */
+function startHttpServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    httpServer = createHttpServer(app);
+
+    const tryListen = (listenPort: number) => {
+      httpServer
+        .listen(listenPort, () => {
+          console.log('=== Artemis Ground Bridge Server ===');
+          console.log(`Listening on http://localhost:${listenPort}`);
+          console.log(`Listening on http://${lanIp}:${listenPort}`);
+          console.log(`API status at http://localhost:${listenPort}/api/status`);
+          console.log(`WebSocket at ws://localhost:${listenPort}/ws`);
+          // Send initial HYDRATE status
+          broadcastHydrate(lastKnownTelemetry, 'BRIDGE_READY');
+          resolve();
+        })
+        .on('error', (err: NodeJS.ErrnoException) => {
+          if (err.code === 'EADDRINUSE') {
+            console.warn(`[server] Port ${listenPort} is in use. Trying alternate port...`);
+            if (listenPort === port) {
+              // First failure: try the next port
+              tryListen(port + 1);
+            } else {
+              // Second failure: give up
+              console.error(`[server] Could not bind to port ${port} or ${port + 1}. Exiting.`);
+              reject(err);
+            }
+          } else {
+            reject(err);
+          }
+        });
+    };
+
+    tryListen(port);
+  });
+}
+
 export function createServer(): HttpServer {
-  httpServer = createHttpServer(app);
-  httpServer.listen(port, () => {
-    console.log('=== Artemis Ground Bridge Server ===');
-    console.log(`Listening on http://localhost:${port}`);
-    console.log(`Listening on http://${lanIp}:${port}`);
-    console.log(`API status at http://localhost:${port}/api/status`);
-    console.log(`WebSocket at ws://localhost:${port}/ws`);
-    // Send initial HYDRATE status
-    broadcastHydrate(lastKnownTelemetry, 'BRIDGE_READY');
+  void startHttpServer().catch((err) => {
+    console.error('[server] Failed to start HTTP server:', err);
   });
 
   // HTTP health check at /api/status returning bridge connection state
@@ -236,6 +307,8 @@ export function createServer(): HttpServer {
     res.json({
       bridgeStatus,
       port: portName,
+      lanIp,
+      serverPort: port,
       lastKnownTelemetrySeq: lastKnownTelemetry?.seq ?? null,
       clientsConnected: clients.size,
     });
