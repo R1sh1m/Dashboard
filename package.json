@@ -4,7 +4,7 @@
   "description": "Real-time telemetry and control interface for Team Artemis autonomous rover operations",
   "author": "Team Artemis",
   "type": "module",
-  "main": "electron/dist/electron/main.js",
+  "main": "electron/dist/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
