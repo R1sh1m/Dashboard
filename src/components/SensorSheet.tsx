@@ -74,6 +74,7 @@ interface SensorSheetProps {
   onSendRadarConfig: () => void;
   isSendingRadarConfig: boolean;
   visibleTabs?: SubsystemTab[];
+  onClose: () => void;
 }
 
 export const SensorSheet: React.FC<SensorSheetProps> = ({
@@ -97,10 +98,25 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
   onSendRadarConfig,
   isSendingRadarConfig,
   visibleTabs = ['bot', 'power', 'motors', 'env', 'radar', 'link', 'logs'],
+  onClose = () => {},
 }) => {
   const [filterLevel, setFilterLevel] = React.useState<LogLevel | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [autoScroll, setAutoScroll] = React.useState(true);
+
+  // Escape dismisses the bottom sheet (maps to overlay tap-to-close as well).
+  // Placed before the early return so hook order stays stable across renders.
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   const isCombinedSensors = visibleTabs.includes('env') && visibleTabs.includes('link');
   const isCoreTelemetry = visibleTabs.some((tab) => tab === 'bot' || tab === 'power' || tab === 'motors');
@@ -117,7 +133,15 @@ export const SensorSheet: React.FC<SensorSheetProps> = ({
   };
 
   return (
-    <div className="sheet telemetry-sheet is-open" role="dialog" aria-label="Telemetry">
+    <div
+      className={`sheet telemetry-sheet is-open${isOpen ? ' open' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Telemetry"
+    >
+      <div className="sheet-handle" aria-hidden="true">
+        <div className="sheet-handle-bar" />
+      </div>
       <div className="sheet-header">
         <span className={`sheet-title${activeTab === 'logs' ? ' sheet-title-live-logs' : ''}`}>
           {activeTab === 'logs' && <TerminalSquare size={15} aria-hidden="true" />}

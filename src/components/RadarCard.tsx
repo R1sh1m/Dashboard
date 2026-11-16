@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { RadarData } from '../types/telemetry';
 import { Target, UserCheck, UserX, Activity, Clock, BarChart3 } from 'lucide-react';
 
@@ -25,18 +25,31 @@ function gateBar(energy: number) {
 }
 
 export const RadarCard: React.FC<RadarCardProps> = React.memo(({ radar, history }) => {
+  const [now, setNow] = useState(() => Date.now());
   const isDetected = radar?.human_detected ?? false;
   const state = radar?.target_state ?? 'NO_TARGET';
-  const movDist = radar?.mov_distance_cm ?? 0;
-  const movEnergy = radar?.mov_energy ?? 0;
-  const statDist = radar?.stat_distance_cm ?? 0;
-  const statEnergy = radar?.stat_energy ?? 0;
+
+  // Support both general firmware payload (distance_cm, energy) and full LD2410 breakdown
+  const rawDist = radar?.distance_cm ?? (radar?.mov_distance_cm || radar?.stat_distance_cm || 0);
+  const rawEnergy = radar?.energy ?? (radar?.mov_energy || radar?.stat_energy || 0);
+
+  const movDist = radar?.mov_distance_cm || (state === 'MOVING' || state === 'COMBINED' ? rawDist : 0);
+  const movEnergy = radar?.mov_energy || (state === 'MOVING' || state === 'COMBINED' ? rawEnergy : 0);
+  const statDist = radar?.stat_distance_cm || (state === 'STATIONARY' || state === 'COMBINED' ? rawDist : 0);
+  const statEnergy = radar?.stat_energy || (state === 'STATIONARY' || state === 'COMBINED' ? rawEnergy : 0);
+
   const engValid = radar?.eng_valid ?? false;
   const presentSince = radar?.present_since ?? null;
 
-  // Presence duration
+  // Presence duration timer updated cleanly via effect
+  useEffect(() => {
+    if (!presentSince || !isDetected) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [presentSince, isDetected]);
+
   const presentSec = presentSince && isDetected
-    ? Math.floor((Date.now() - presentSince) / 1000)
+    ? Math.max(0, Math.floor((now - presentSince) / 1000))
     : 0;
 
   // Determine primary display distance/energy based on state
@@ -164,7 +177,7 @@ export const RadarCard: React.FC<RadarCardProps> = React.memo(({ radar, history 
       <div className="grid grid-cols-2 gap-2">
         <div className="glass-panel-subtle p-2 rounded-lg border border-white/5">
           <div className="text-xs text-neutral-400 uppercase tracking-wider mb-0.5">PRESENCE</div>
-          <div className="text-sm font-mono {isDetected ? 'text-[#0A84FF] font-bold' : 'text-neutral-400'}">
+          <div className={`text-sm font-mono ${isDetected ? 'text-[#0A84FF] font-bold' : 'text-neutral-400'}`}>
             {isDetected ? `${presentSec}s` : '—'}
           </div>
         </div>
@@ -177,32 +190,49 @@ export const RadarCard: React.FC<RadarCardProps> = React.memo(({ radar, history 
       </div>
 
       {/* History mini-chart (last 10 detections) */}
-      {history.length > 0 && (
-        <div className="glass-panel-subtle p-2.5 rounded-lg border border-white/5">
-          <div className="text-xs text-neutral-400 uppercase tracking-wider mb-1.5">DETECTION HISTORY</div>
-          <div className="flex items-end gap-1 h-12">
+      <div className="glass-panel-subtle p-2.5 rounded-lg border border-white/5">
+        <div className="flex items-center justify-between text-xs text-neutral-400 uppercase tracking-wider mb-2">
+          <span>DETECTION HISTORY</span>
+          {history.length > 0 && (
+            <span className="text-[10px] font-mono text-neutral-400">
+              {history[history.length - 1].distance_cm} cm · {history[history.length - 1].energy}%
+            </span>
+          )}
+        </div>
+        {history.length === 0 ? (
+          <div className="text-xs text-neutral-500 font-mono py-2.5 text-center">
+            Awaiting radar target detection…
+          </div>
+        ) : (
+          <div className="flex items-end gap-1.5 h-14 pt-1">
             {history.slice(-10).map((h, i) => {
-              const pct = Math.max(10, (h.energy / 100) * 100);
+              const energyPct = Math.max(15, Math.min(100, h.energy || 15));
+              const distLabel = h.distance_cm >= 100
+                ? `${(h.distance_cm / 100).toFixed(1)}m`
+                : `${h.distance_cm}cm`;
               return (
                 <div
-                  key={i}
-                  className="flex flex-col items-center justify-end gap-0.5 w-full"
-                  title={`Dist: ${h.distance_cm}cm | Energy: ${h.energy}% | ${h.target_state}`}
+                  key={`${h.timestamp}_${i}`}
+                  className="flex flex-col items-center justify-end gap-1 w-full h-full group relative cursor-pointer"
+                  title={`Time: ${new Date(h.timestamp).toLocaleTimeString()} | Dist: ${h.distance_cm}cm | Energy: ${h.energy}% | State: ${h.target_state}`}
                 >
                   <div
-                    className="w-full rounded-t"
+                    className="w-full rounded-t transition-all duration-150"
                     style={{
-                      height: `${pct}%`,
-                      backgroundColor: h.energy > 60 ? '#ff453a' : h.energy > 30 ? '#ffd60a' : '#30d158',
+                      height: `${energyPct}%`,
+                      backgroundColor:
+                        h.energy > 60 ? '#ff453a' : h.energy > 30 ? '#ffd60a' : '#30d158',
                     }}
                   />
-                  <span className="text-[10px] text-neutral-500">{h.distance_cm}</span>
+                  <span className="text-[9px] font-mono text-neutral-400 truncate max-w-full">
+                    {distLabel}
+                  </span>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 });

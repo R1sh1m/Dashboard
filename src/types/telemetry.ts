@@ -33,6 +33,8 @@ export interface EnvData {
 export interface RadarData {
   human_detected: boolean;
   target_state: 'NO_TARGET' | 'MOVING' | 'STATIONARY' | 'COMBINED';
+  distance_cm?: number;
+  energy?: number;
   // Moving target (separate from stationary — full LD2410B capability)
   mov_distance_cm: number;
   mov_energy: number; // 0-100

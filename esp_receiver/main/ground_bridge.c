@@ -491,7 +491,7 @@ static void emit_json(void)
         "\"bot_status\":{\"state\":\"%s\",\"uptime_sec\":%u,\"mode\":\"%s\",\"loop_hz\":%.1f},"
         "\"gps\":{\"lat\":%.7f,\"lng\":%.7f,\"alt_m\":%.2f,\"fix\":%u,\"sats\":%u,\"speed_mps\":%.2f,\"hdop\":%.1f,\"heading_deg\":%.1f,\"valid\":%s},"
         "\"env\":{\"temp_c\":%.1f,\"humidity_pct\":%.1f,\"pressure_hpa\":%.1f,\"gas_resistance_kohm\":%.2f,\"iaq\":%u,\"anomaly_flag\":%s,\"valid\":%s},"
-        "\"radar\":{\"human_detected\":%s,\"target_state\":\"%s\",\"distance_cm\":%.0f,\"energy\":%u},"
+        "\"radar\":{\"human_detected\":%s,\"target_state\":\"%s\",\"distance_cm\":%.0f,\"energy\":%u,\"mov_distance_cm\":%u,\"mov_energy\":%u,\"stat_distance_cm\":%u,\"stat_energy\":%u,\"eng_valid\":%s,\"eng_mov_gates\":[%u,%u,%u,%u,%u,%u,%u],\"eng_stat_gates\":[%u,%u,%u,%u,%u,%u,%u]},"
         "\"power\":{\"voltage_v\":%.2f,\"current_a\":%.2f,\"percent\":%u,\"cell_voltages\":[%.2f,%.2f,%.2f]},"
         "\"motors\":{\"active_count\":%u,\"avg_temp_c\":%.1f,\"max_temp_c\":%.1f,\"fault_mask\":0,\"servos\":[]},"
         "\"link\":{\"rssi_dbm\":%d,\"snr_db\":%d,\"packet_loss_pct\":%.1f,\"latency_ms\":%u}"
@@ -512,6 +512,17 @@ static void emit_json(void)
         shadow.radar.human ? "true" : "false",
         shadow.radar.target_state == 0 ? "NO_TARGET" : (shadow.radar.target_state == 1 ? "MOVING" : (shadow.radar.target_state == 2 ? "STATIONARY" : "COMBINED")),
         radar_dist_cm, (unsigned int)radar_energy,
+        (unsigned int)shadow.radar.mov_dist_cm, (unsigned int)shadow.radar.mov_energy,
+        (unsigned int)shadow.radar.stat_dist_cm, (unsigned int)shadow.radar.stat_energy,
+        shadow.radar.eng_valid ? "true" : "false",
+        (unsigned int)shadow.radar.eng_mov_gates[0], (unsigned int)shadow.radar.eng_mov_gates[1],
+        (unsigned int)shadow.radar.eng_mov_gates[2], (unsigned int)shadow.radar.eng_mov_gates[3],
+        (unsigned int)shadow.radar.eng_mov_gates[4], (unsigned int)shadow.radar.eng_mov_gates[5],
+        (unsigned int)shadow.radar.eng_mov_gates[6],
+        (unsigned int)shadow.radar.eng_stat_gates[0], (unsigned int)shadow.radar.eng_stat_gates[1],
+        (unsigned int)shadow.radar.eng_stat_gates[2], (unsigned int)shadow.radar.eng_stat_gates[3],
+        (unsigned int)shadow.radar.eng_stat_gates[4], (unsigned int)shadow.radar.eng_stat_gates[5],
+        (unsigned int)shadow.radar.eng_stat_gates[6],
         voltage_v, current_a, (unsigned int)shadow.power.est_soc,
         voltage_v / 3.0, voltage_v / 3.0, voltage_v / 3.0,
         motor_count, motor_temp, motor_temp + 1.5,

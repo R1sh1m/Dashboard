@@ -81,6 +81,7 @@ export function App() {
     typeof window !== 'undefined' && localStorage.getItem('artemis-map-control-mode') === 'manual' ? 'manual' : 'sensor'
   ));
   const autoPoiCooldownRef = useRef({ human: 0, environment: 0 });
+  const lastRadarHistoryAt = useRef<number>(0);
   // Previous GPS position, touched only in GPS reception callbacks, used to
   // derive STANDBY vs WALKING solely from GPS sensor data (position changing).
   const prevGpsPos = useRef<{ lat: number; lng: number } | null>(null);
@@ -142,21 +143,39 @@ export function App() {
       }
       return current;
     });
+    // Robust distance & energy resolution (firmware sends distance_cm/energy, full LD2410 sends mov/stat)
+    const radarDist = packet.radar.distance_cm ??
+      (packet.radar.mov_distance_cm || packet.radar.stat_distance_cm || 0);
+    const radarEnergy = packet.radar.energy ??
+      (packet.radar.mov_energy || packet.radar.stat_energy || 0);
+    const isTargetDetected = packet.radar.human_detected ||
+      packet.radar.target_state !== 'NO_TARGET' ||
+      radarEnergy > 0;
+
+    // Detection history: record detection events throttled to 800ms, independent of GPS
+    const nowMs = Date.now();
+    if (isTargetDetected && nowMs - lastRadarHistoryAt.current >= 800) {
+      lastRadarHistoryAt.current = nowMs;
+      startTransition(() => {
+        setRadarHistory((current) => [
+          ...current.slice(-19),
+          {
+            timestamp: nowMs,
+            distance_cm: radarDist,
+            energy: radarEnergy,
+            target_state: packet.radar.target_state,
+          },
+        ]);
+      });
+    }
+
+    // Auto-POI pinning: only if GPS fix is valid
     if (packet.radar.human_detected && packet.gps.valid) {
       const timestamp = Date.now();
       if (timestamp - autoPoiCooldownRef.current.human >= 15000) {
         const newLat = packet.gps.lat;
         const newLng = packet.gps.lng;
         startTransition(() => {
-          setRadarHistory((current) => [
-            ...current.slice(-19),
-            {
-              timestamp,
-              distance_cm: packet.radar.mov_distance_cm || packet.radar.stat_distance_cm || 0,
-              energy: packet.radar.mov_energy || packet.radar.stat_energy || 0,
-              target_state: packet.radar.target_state,
-            },
-          ]);
           setPois((current) => {
             // Spatial dedup: skip if another HUMAN_RADAR pin is within POI_MIN_SPACING_M
             const tooClose = current.some(
@@ -172,9 +191,9 @@ export function App() {
               lat: newLat,
               lng: newLng,
               title: 'Human Presence (LD2410B)',
-              notes: `Target: ${packet.radar.target_state} | Mov: ${packet.radar.mov_distance_cm}cm/${packet.radar.mov_energy}% | Stat: ${packet.radar.stat_distance_cm}cm/${packet.radar.stat_energy}%`,
+              notes: `Target: ${packet.radar.target_state} | Dist: ${radarDist}cm | Energy: ${radarEnergy}%`,
               timestamp,
-              meta: { distance_cm: packet.radar.mov_distance_cm || packet.radar.stat_distance_cm || 0, energy: packet.radar.mov_energy || packet.radar.stat_energy || 0 },
+              meta: { distance_cm: radarDist, energy: radarEnergy },
             };
             void poiDatabase.save(humanPoi).catch((error: unknown) => {
               console.error('Failed to save radar point of interest.', error);
