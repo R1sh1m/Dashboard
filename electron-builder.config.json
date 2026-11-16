@@ -1,0 +1,27 @@
+{
+  "appId": "com.artemis.groundstation",
+  "productName": "Artemis Ground Station",
+  "files": [
+    "dist/**",
+    "electron/dist/**",
+    "electron/installer/**"
+  ],
+  "extraResources": [
+    "dist/**"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": true,
+    "allowToChangeInstallationDirectory": true,
+    "artifactName": "${productName} Setup ${version}.${ext}"
+  },
+  "publish": null
+}

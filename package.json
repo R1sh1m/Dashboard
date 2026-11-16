@@ -1,6 +1,8 @@
 {
   "name": "artemis-ground-station",
   "version": "1.0.0",
+  "description": "Real-time telemetry and control interface for Team Artemis autonomous rover operations",
+  "author": "Team Artemis",
   "type": "module",
   "main": "electron/dist/main.js",
   "scripts": {
@@ -13,7 +15,7 @@
     "serve:all": "npm run build && npm run server:start",
     "electron:build-main": "tsc -p tsconfig.electron.json",
     "electron": "npm run electron:build-main && electron .",
-    "electron:build": "npm run build && npm run electron:build-main && electron-builder",
+    "electron:build": "npm run build && npm run electron:build-main && electron-builder --win --config electron-builder.config.json",
     "package": "electron-builder"
   },
   "dependencies": {
@@ -50,22 +52,6 @@
     "vite": "^8.3.4",
     "vitest": "^5.1.0"
   },
-  "build": {
-    "appId": "com.artemis.groundstation",
-    "productName": "Artemis Ground Station",
-    "files": [
-      "dist/**",
-      "electron/dist/**",
-      "electron/installer/**"
-    ],
-    "win": {
-      "target": "nsis",
-      "publisherName": "Team Artemis"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": true,
-      "allowToChangeInstallationDirectory": true
-    }
-  }
+  "build": {}
+
 }
