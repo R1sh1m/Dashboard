@@ -10,6 +10,8 @@ jobs:
   build:
     # electron-builder NSIS packaging requires Windows.
     runs-on: windows-latest
+    permissions:
+      contents: write  # needed to create GitHub Release with installer asset
 
     steps:
       - name: Checkout repository
