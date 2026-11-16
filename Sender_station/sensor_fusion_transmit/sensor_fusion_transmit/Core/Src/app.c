@@ -41,11 +41,77 @@ static int rb_get(rb_t *r, uint8_t *c) {
   return 1;
 }
 
+typedef enum { RADAR_CFG_IDLE, RADAR_CFG_ENABLE, RADAR_CFG_ENG_ON, RADAR_CFG_BASE,
+               RADAR_CFG_MOTION, RADAR_CFG_STATIC, RADAR_CFG_END, RADAR_CFG_DONE,
+               RADAR_CFG_FAILED } radar_cfg_state_t;
+static ld_parser_t ldp;
+static ld_target_t g_rad;
+static ld_eng_t    g_eng;
+static ld_cmd_t    g_lc;
+static uint32_t    t_rad_hb = 0;
+static uint8_t     g_rad_configured = 0;
+static radar_cfg_state_t g_radar_cfg_state = RADAR_CFG_IDLE;
+
+/* LD2412 UART5 transmit callback (one byte, blocking; fine at 115200 baud) */
+static void ld_tx_byte(uint8_t b)
+{
+  HAL_UART_Transmit(&huart5, &b, 1, 100);
+}
+
+/* Radar configuration state machine: runs one command at a time across
+ * app_loop passes. Each ld_*_begin returns 1 when the command completes. */
+static void ld_radar_config_step(radar_cfg_state_t *st, ld_cmd_t *lc, uint32_t now)
+{
+  if (*st == RADAR_CFG_IDLE || *st == RADAR_CFG_DONE || *st == RADAR_CFG_FAILED)
+    return;
+
+  static const uint8_t sens_all[14] = { 80,80,80,80,80,80,80,80,80,80,80,80,80,80 };
+
+  switch (*st) {
+  case RADAR_CFG_ENABLE:
+    if (ld_config_begin(lc, now)) {
+      *st = lc->ok ? RADAR_CFG_ENG_ON : RADAR_CFG_FAILED;
+    }
+    break;
+  case RADAR_CFG_ENG_ON:
+    if (ld_engineering_mode(lc, 1, now)) {
+      *st = lc->ok ? RADAR_CFG_BASE : RADAR_CFG_FAILED;
+    }
+    break;
+  case RADAR_CFG_BASE:
+    if (ld_set_base_params(lc, 1, 13, 5, 0, now)) {
+      *st = lc->ok ? RADAR_CFG_MOTION : RADAR_CFG_FAILED;
+    }
+    break;
+  case RADAR_CFG_MOTION:
+    if (ld_set_motion_sensitivity(lc, sens_all, now)) {
+      *st = lc->ok ? RADAR_CFG_STATIC : RADAR_CFG_FAILED;
+    }
+    break;
+  case RADAR_CFG_STATIC:
+    if (ld_set_static_sensitivity(lc, sens_all, now)) {
+      *st = lc->ok ? RADAR_CFG_END : RADAR_CFG_FAILED;
+    }
+    break;
+  case RADAR_CFG_END:
+    if (ld_config_end(lc, now)) {
+      *st = lc->ok ? RADAR_CFG_DONE : RADAR_CFG_FAILED;
+    }
+    break;
+  default:
+    break;
+  }
+}
+
+static volatile uint32_t g_uart5_rx_count = 0;
+static volatile uint32_t g_uart5_err_count = 0;
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h) {
   if (h->Instance == USART2) {
     rb_put(&gps_rb, gps_byte);
     HAL_UART_Receive_IT(h, &gps_byte, 1);
   } else if (h->Instance == UART5) {
+    g_uart5_rx_count++;
     rb_put(&ld_rb, ld_byte);
     HAL_UART_Receive_IT(h, &ld_byte, 1);
   }
@@ -56,8 +122,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *h) {
   __HAL_UART_CLEAR_NEFLAG(h);
   if (h->Instance == USART2)
     HAL_UART_Receive_IT(h, &gps_byte, 1);
-  if (h->Instance == UART5)
+  if (h->Instance == UART5) {
+    g_uart5_err_count++;
     HAL_UART_Receive_IT(h, &ld_byte, 1);
+  }
 }
 void HAL_GPIO_EXTI_Callback(uint16_t pin) {
   if (pin == LORA_DIO1_Pin)
@@ -72,8 +140,6 @@ static uint8_t g_ubx_nav_pvt_seen;
 static char nmea_buf[120];
 static uint8_t nmea_len;
 static bool nmea_in_msg;
-static ld_parser_t ldp;
-static ld_target_t g_rad;
 static bme_sample_t g_env;
 static uint8_t g_env_ok, g_bme_ok, g_bme_busy;
 static uint32_t g_bme_t0;
@@ -301,6 +367,19 @@ __attribute__((weak)) void app_on_cmd(uint8_t cmd, const uint8_t *arg,
     printf("E-STOP received\r\n");
   } else if (cmd == CMD_SYNC_TIME) {
     printf("SYNC_TIME received\r\n");
+  } else if (cmd == CMD_RADAR_ENG_MODE) {
+    uint8_t eng = (n >= 1) ? arg[0] : 0;
+    uint8_t enable_val[2] = { 0x01u, 0x00u };
+    ld_send_cmd(&huart5, LD_CMD_ENABLE_CONF, enable_val, 2);
+    HAL_Delay(25);
+    if (eng) {
+      ld_send_cmd(&huart5, LD_CMD_ENG_MODE_ON, NULL, 0);
+    } else {
+      ld_send_cmd(&huart5, LD_CMD_ENG_MODE_OFF, NULL, 0);
+    }
+    HAL_Delay(25);
+    ld_send_cmd(&huart5, LD_CMD_END_CONF, NULL, 0);
+    printf("RADAR_ENG set: %u\r\n", eng);
   }
 }
 static void handle_rx(const radio_rx_t *r, uint32_t now) {
@@ -388,6 +467,11 @@ static void send_gps(uint32_t now) {
 static void send_radar(uint32_t now) {
   pl_radar_t p = {now,         g_rad.state,   g_rad.state != 0, g_rad.mov_cm,
                   g_rad.mov_e, g_rad.stat_cm, g_rad.stat_e};
+  if (g_eng.gate_count) {
+    memcpy(p.eng_mov_gates, g_eng.mov_gate_energy, 7);
+    memcpy(p.eng_stat_gates, g_eng.stat_gate_energy, 7);
+    p.eng_valid = 1;
+  }
   txq_push(PKT_RADAR_ALERT, FLAG_PRIORITY, 1, 1 /* ACK_REQ */, &p, sizeof p, 1);
 }
 static void send_status(uint32_t now) {
@@ -584,7 +668,10 @@ static void lcd_update(uint32_t now) {
   } else {
     char rad_ch = '-';
     uint16_t rad_dist = 0;
-    if (g_rad.state == 1) {
+    if (!g_rad.t_ms || (now - g_rad.t_ms > 2500)) {
+      rad_ch = 'X'; /* 'X' = Offline / No signal on UART5 */
+      rad_dist = 0;
+    } else if (g_rad.state == 1) {
       rad_ch = 'M';
       rad_dist = g_rad.mov_cm;
     } else if (g_rad.state == 2) {
@@ -593,6 +680,9 @@ static void lcd_update(uint32_t now) {
     } else if (g_rad.state == 3) {
       rad_ch = 'B';
       rad_dist = g_rad.mov_cm ? g_rad.mov_cm : g_rad.stat_cm;
+    } else {
+      rad_ch = '0'; /* '0' = Active link, searching (0 targets in range) */
+      rad_dist = 0;
     }
     if (rad_dist > 999)
       rad_dist = 999;
@@ -601,8 +691,9 @@ static void lcd_update(uint32_t now) {
              rad_ch, rad_dist);
   }
   (void)now;
-  lcd_print(0, a);
-  lcd_print(1, g_estop ? "** E-STOP **" : b);
+  if (lcd_print(0, a) != 0 || lcd_print(1, g_estop ? "** E-STOP **" : b) != 0) {
+    g_lcd_ok = 0;
+  }
 }
 
 /* ------------------------------------------------------------------ init /
@@ -636,6 +727,20 @@ static void iwdg_init(void) {
   IWDG->KR = 0x0000AAAAu; /* first reload (kick) */
 }
 
+static void set_uart5_config(uint32_t baud, uint8_t swap_pins)
+{
+  HAL_UART_AbortReceive(&huart5);
+  huart5.Init.BaudRate = baud;
+  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_SWAP_INIT;
+  huart5.AdvancedInit.Swap = swap_pins ? UART_ADVFEATURE_SWAP_ENABLE : UART_ADVFEATURE_SWAP_DISABLE;
+  HAL_UART_Init(&huart5);
+  __HAL_UART_CLEAR_OREFLAG(&huart5);
+  __HAL_UART_CLEAR_FEFLAG(&huart5);
+  __HAL_UART_CLEAR_NEFLAG(&huart5);
+  huart5.ErrorCode = HAL_UART_ERROR_NONE;
+  HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
+}
+
 void app_init(void) {
   const char *boot_msg = "\r\n=== SENDER TX BOOT ===\r\n";
   HAL_UART_Transmit(&huart3, (uint8_t *)boot_msg, (uint16_t)strlen(boot_msg),
@@ -664,10 +769,12 @@ void app_init(void) {
   __HAL_UART_CLEAR_FEFLAG(&huart2);
   __HAL_UART_CLEAR_NEFLAG(&huart2);
   HAL_UART_Receive_IT(&huart2, &gps_byte, 1);
-  __HAL_UART_CLEAR_OREFLAG(&huart5);
-  __HAL_UART_CLEAR_FEFLAG(&huart5);
-  __HAL_UART_CLEAR_NEFLAG(&huart5);
-  HAL_UART_Receive_IT(&huart5, &ld_byte, 1);
+  set_uart5_config(256000, 0);
+  printf("UART5 initialized at 256000 baud (LD2410B default)\r\n");
+  /* LD2412 full-feature configuration runs as a state machine in app_loop */
+  ld_cmd_init(&g_lc, ld_tx_byte);
+  g_radar_cfg_state = RADAR_CFG_ENABLE;
+  printf("LD2412 config sequence started (UART5 PC12/PD2)\r\n");
   gps_configure();
   bucket_t = HAL_GetTick();
   bucket_us = BUCKET_MAX_US;
@@ -749,6 +856,30 @@ void app_loop(void) {
   /* Kick the independent watchdog every pass (~500 ms window) so a
    * transient fault or brownout triggers an automatic reset + reboot. */
   IWDG->KR = 0x0000AAAAu;
+
+  /* Radar config state machine (runs across app_loop passes) */
+  ld_radar_config_step(&g_radar_cfg_state, &g_lc, now);
+  if (g_radar_cfg_state == RADAR_CFG_DONE && !g_rad_configured) {
+    g_rad_configured = 1;
+    printf("[RADAR] Configuration complete (eng mode on, per-gate sensitivity set)\r\n");
+  }
+  if (g_radar_cfg_state == RADAR_CFG_FAILED) {
+    g_radar_cfg_state = RADAR_CFG_IDLE;
+    printf("[RADAR] Configuration failed\r\n");
+  }
+
+  /* Periodic radar heartbeat (every 1 s) */
+  if (now - t_rad_hb >= 1000u) {
+    t_rad_hb = now;
+    uint8_t det = g_rad.state != 0;
+    uint16_t cur_dist = (g_rad.state == 1) ? g_rad.mov_cm :
+                        ((g_rad.state == 2) ? g_rad.stat_cm :
+                        (g_rad.mov_cm ? g_rad.mov_cm : g_rad.stat_cm));
+    printf("[RADAR-HB] det=%u dist=%u cm state=%u mov=%u cm stat=%u cm eng_gates=%u configured=%u\r\n",
+           (unsigned)det, (unsigned)cur_dist, (unsigned)g_rad.state,
+           (unsigned)g_rad.mov_cm, (unsigned)g_rad.stat_cm,
+           (unsigned)g_eng.gate_count, (unsigned)g_rad_configured);
+  }
 
   while (rb_get(&gps_rb, &c)) {
     /* ---- NMEA sentence collection ---- */
@@ -877,7 +1008,30 @@ void app_loop(void) {
     }
   }
   while (rb_get(&ld_rb, &c)) {
-    if (ld_feed(&ldp, c, &g_rad, now)) { /* event-driven radar alert */
+    static uint32_t s_raw_rx_debug_count = 0;
+    if (s_raw_rx_debug_count < 24) {
+      printf("[RADAR RAW 0x%02X] ", (unsigned)c);
+      s_raw_rx_debug_count++;
+      if (s_raw_rx_debug_count == 24) printf("\r\n");
+    }
+    /* Feed ACK bytes to the command state machine (for config responses) */
+    ld_cmd_ack_byte(&g_lc, c, now);
+    /* Feed basic target frame (0x02) */
+    ld_feed(&ldp, c, &g_rad, now);
+    /* Feed engineering mode frame (0x01) */
+    ld_feed_eng(&ldp, c, &g_eng, now);
+    /* Periodic radar config state machine step */
+    ld_radar_config_step(&g_radar_cfg_state, &g_lc, now);
+    /* Event-driven radar alert on basic target detection */
+    if (g_rad.t_ms && now - g_rad.t_ms < 2000) {
+      static uint8_t s_radar_bootstrapped = 0;
+      static uint32_t s_last_rad_rx = 0;
+      if (!s_radar_bootstrapped || (now - s_last_rad_rx > 6000)) {
+        s_radar_bootstrapped = 1;
+        printf("\r\n[RADAR] Active stream detected!\r\n");
+      }
+      s_last_rad_rx = now;
+
       uint8_t det = g_rad.state != 0;
       uint16_t cur_dist = (g_rad.state == 1) ? g_rad.mov_cm :
                           ((g_rad.state == 2) ? g_rad.stat_cm :
@@ -897,6 +1051,44 @@ void app_loop(void) {
         t_alert = now;
       }
     }
+  }
+
+  static uint32_t last_uart5_diag = 0;
+  if (now - last_uart5_diag >= 2000) {
+    last_uart5_diag = now;
+    printf("[UART5 DIAG] rx=%lu errs=%lu state=%d err_code=0x%lx\r\n",
+           (unsigned long)g_uart5_rx_count, (unsigned long)g_uart5_err_count,
+           (int)huart5.RxState, (unsigned long)huart5.ErrorCode);
+  }
+
+  /* Radar baud-rate and pinout auto-negotiation:
+   * Tests 4 combinations automatically:
+   * 0: Normal pins (PC12=TX, PD2=RX) @ 256000 baud (LD2410 standard)
+   * 1: Normal pins (PC12=TX, PD2=RX) @ 115200 baud (LD2412 standard)
+   * 2: Swapped pins (PC12=RX, PD2=TX) @ 256000 baud (reversed jumpers)
+   * 3: Swapped pins (PC12=RX, PD2=TX) @ 115200 baud (reversed jumpers) */
+  static const struct {
+    uint32_t baud;
+    uint8_t  swap;
+  } s_radar_modes[] = {
+    { 256000, 0 },
+    { 115200, 0 },
+    { 256000, 1 },
+    { 115200, 1 }
+  };
+  static uint8_t  s_radar_mode_idx = 0;
+  static uint32_t s_last_baud_switch = 0;
+  if (!g_rad.t_ms && (g_uart5_err_count > 4 || (g_uart5_rx_count == 0 && now > 4000)) && (now - s_last_baud_switch >= 2500)) {
+    s_last_baud_switch = now;
+    s_radar_mode_idx = (s_radar_mode_idx + 1) % 4;
+    uint32_t new_baud = s_radar_modes[s_radar_mode_idx].baud;
+    uint8_t  new_swap = s_radar_modes[s_radar_mode_idx].swap;
+    printf("\r\n[RADAR AUTO] Trying mode %u: baud=%lu, swap=%u (%s)...\r\n",
+           (unsigned)s_radar_mode_idx, (unsigned long)new_baud, (unsigned)new_swap,
+           new_swap ? "PC12=RX, PD2=TX" : "PC12=TX, PD2=RX");
+    set_uart5_config(new_baud, new_swap);
+    g_uart5_err_count = 0;
+    g_uart5_rx_count = 0;
   }
 
   static uint32_t last_uart5_check = 0;
@@ -1021,10 +1213,10 @@ void app_loop(void) {
       static uint32_t last_lcd_retry = 0;
       if (now - last_lcd_retry >= 1500) {
         last_lcd_retry = now;
-        if (lcd_init() == 0) {
+        if (lcd_reinit() == 0 || lcd_init() == 0) {
           g_lcd_ok = 1;
           lcd_print(0, "Artemis Online");
-          printf("\r\n*** LCD HOT-PLUG DETECTED & INITIALIZED! ***\r\n");
+          printf("\r\n*** LCD RECOVERED & INITIALIZED! ***\r\n");
         }
       }
     }

@@ -23,33 +23,48 @@ static uint8_t             lcd_bl    = BL;
 /* ── Low-level expander write (matches Arduino LiquidCrystal_I2C) ───────── */
 static HAL_StatusTypeDef expander_write(uint8_t data)
 {
+    if (lcd_hi2c == NULL) return HAL_ERROR;
     uint8_t b = (uint8_t)(data | lcd_bl);
-    return HAL_I2C_Master_Transmit(lcd_hi2c, lcd_addr8, &b, 1, 50);
+    HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(lcd_hi2c, lcd_addr8, &b, 1, 25);
+    if (st != HAL_OK) {
+        ok = 0;
+        /* Recover I2C peripheral state if locked up by bus transient or ACK failure */
+        if (lcd_hi2c->ErrorCode != HAL_I2C_ERROR_NONE || lcd_hi2c->State != HAL_I2C_STATE_READY) {
+            HAL_I2C_DeInit(lcd_hi2c);
+            HAL_I2C_Init(lcd_hi2c);
+        }
+    }
+    return st;
 }
 
 /* ── Pulse enable (matches Arduino pulseEnable) ─────────────────────────── */
-static void pulse_enable(uint8_t data)
+static HAL_StatusTypeDef pulse_enable(uint8_t data)
 {
-    expander_write((uint8_t)(data | EN));
+    HAL_StatusTypeDef st = expander_write((uint8_t)(data | EN));
+    if (st != HAL_OK) return st;
     HAL_Delay(1);  /* enable pulse width > 450 ns */
-    expander_write((uint8_t)(data & ~EN));
+    st = expander_write((uint8_t)(data & ~EN));
+    if (st != HAL_OK) return st;
     HAL_Delay(1);  /* execution time > 37 us */
+    return HAL_OK;
 }
 
 /* ── Write 4 bits (matches Arduino write4bits) ──────────────────────────── */
-static void write4bits(uint8_t value)
+static HAL_StatusTypeDef write4bits(uint8_t value)
 {
-    expander_write(value);
-    pulse_enable(value);
+    HAL_StatusTypeDef st = expander_write(value);
+    if (st != HAL_OK) return st;
+    return pulse_enable(value);
 }
 
 /* ── Send command or data (matches Arduino send) ─────────────────────────── */
-static void send(uint8_t value, uint8_t mode)
+static HAL_StatusTypeDef send(uint8_t value, uint8_t mode)
 {
     uint8_t highnib = (uint8_t)(value & 0xF0u);
     uint8_t lownib  = (uint8_t)((value << 4) & 0xF0u);
-    write4bits((uint8_t)(highnib | mode));
-    write4bits((uint8_t)(lownib  | mode));
+    HAL_StatusTypeDef st = write4bits((uint8_t)(highnib | mode));
+    if (st != HAL_OK) return st;
+    return write4bits((uint8_t)(lownib  | mode));
 }
 
 /* ── Try initializing on a specific 7-bit address on a given bus ──────────
@@ -68,7 +83,7 @@ static int try_init_addr(I2C_HandleTypeDef *hi2c, uint8_t addr7)
         HAL_StatusTypeDef st = HAL_I2C_Master_Transmit(hi2c, a8, &test_byte, 1, 30);
         uint32_t err = hi2c->ErrorCode;
 
-        printf("  Probe 0x%02X attempt %lu: Transmit=%d (err=0x%lX)\r\n", addr7, (unsigned long)(attempt + 1), st, err);
+        printf("  Probe 0x%02X attempt %lu: Transmit=%d (err=0x%lX)\r\n", addr7, (unsigned long)(attempt + 1), st, (unsigned long)err);
 
         if (st == HAL_OK) {
             printf("  >>> SUCCESS! PCF8574 ACked at 0x%02X! <<<\r\n", addr7);
@@ -219,6 +234,55 @@ int lcd_init(void)
 
 /* ── Public API ─────────────────────────────────────────────────────────── */
 
+int lcd_reinit(void)
+{
+    if (lcd_hi2c == NULL) return -1;
+    ok = 1;
+    lcd_bl = BL;
+
+    /* Arduino LiquidCrystal_I2C initialization sequence (HD44780 datasheet page 45-46) */
+    HAL_Delay(10);
+
+    /* Reset expander and turn backlight on */
+    if (expander_write(lcd_bl) != HAL_OK) {
+        ok = 0;
+        return -1;
+    }
+    HAL_Delay(20);
+
+    /* 3x 0x03 to force 8-bit reset, then 0x02 to switch to 4-bit mode */
+    if (write4bits(0x30) != HAL_OK) { ok = 0; return -1; }
+    HAL_Delay(5);   /* wait > 4.1ms */
+    if (write4bits(0x30) != HAL_OK) { ok = 0; return -1; }
+    HAL_Delay(5);   /* wait > 4.1ms */
+    if (write4bits(0x30) != HAL_OK) { ok = 0; return -1; }
+    HAL_Delay(2);   /* wait > 100us */
+    if (write4bits(0x20) != HAL_OK) { ok = 0; return -1; } /* 4-bit mode */
+    HAL_Delay(2);
+
+    /* Function set: 2 lines, 5x8 font */
+    send(0x28, 0);
+    HAL_Delay(2);
+
+    /* Display control: display off */
+    send(0x08, 0);
+    HAL_Delay(2);
+
+    /* Clear display */
+    send(0x01, 0);
+    HAL_Delay(5);
+
+    /* Entry mode set: increment cursor, no shift */
+    send(0x06, 0);
+    HAL_Delay(2);
+
+    /* Display control: display ON, cursor OFF, blink OFF */
+    send(0x0C, 0);
+    HAL_Delay(2);
+
+    return ok ? 0 : -1;
+}
+
 void lcd_clear(void)
 {
     if (!ok) return;
@@ -241,12 +305,19 @@ void lcd_backlight(int on)
     expander_write(0);
 }
 
-void lcd_print(int row, const char *s)
+int lcd_print(int row, const char *s)
 {
-    if (!ok) return;
-    send((uint8_t)(0x80 | (row ? 0x40 : 0x00)), 0);
+    if (!ok) return -1;
+    if (send((uint8_t)(0x80 | (row ? 0x40 : 0x00)), 0) != HAL_OK) {
+        ok = 0;
+        return -1;
+    }
     HAL_Delay(1);
     for (int i = 0; i < 16; i++) {
-        send(*s ? (uint8_t)*s++ : (uint8_t)' ', RS);
+        if (send(*s ? (uint8_t)*s++ : (uint8_t)' ', RS) != HAL_OK) {
+            ok = 0;
+            return -1;
+        }
     }
+    return 0;
 }

@@ -1,10 +1,13 @@
 #ifndef LD2412_H
 #define LD2412_H
 #include <stdint.h>
+#include <stddef.h>
 #include "stm32f7xx_hal.h"
 #define LD_BUF 64u
 
-/* ---- HLK-LD2410B target state ---- */
+/* =========================================================================
+ *  Basic target report (byte stream via ld_feed)
+ * ========================================================================= */
 typedef struct {
     uint8_t state;                  /* 0 none, 1 moving, 2 stationary, 3 both */
     uint16_t mov_cm, stat_cm;       /* moving / stationary distance (cm) */
@@ -12,10 +15,9 @@ typedef struct {
     uint32_t t_ms;                  /* tick of last good frame */
 } ld_target_t;
 
-/* ---- Engineering mode (0x01) extended data ---- */
-/* Engineering mode reports per-range-gate energy for moving & stationary.
- * LD2410B supports range gates 2..8 m (7 gates).  We store the latest
- * snapshot so the dashboard can render a range-profile heatmap. */
+/* =========================================================================
+ *  Engineering mode target data (per-range-gate energy profile)
+ * ========================================================================= */
 #define LD_ENG_GATES 7u
 typedef struct {
     uint8_t  mov_gate_energy[LD_ENG_GATES];   /* energy per gate, moving   */
@@ -24,57 +26,125 @@ typedef struct {
     uint32_t t_ms;                            /* tick of last eng frame    */
 } ld_eng_t;
 
-/* ---- Parser ---- */
+/* =========================================================================
+ *  Parser state (byte stream)
+ * ========================================================================= */
 typedef struct { uint8_t st, tail; uint16_t len, n; uint8_t buf[LD_BUF]; } ld_parser_t;
-/* returns 1 when a basic-target frame (0x02) was decoded into *o */
+
+/* Returns 1 when a basic-target frame (0x02) was decoded into *o */
 int ld_feed(ld_parser_t *p, uint8_t b, ld_target_t *o, uint32_t now_ms);
-/* returns 1 when an engineering-mode frame (0x01) was decoded into *eng */
+/* Returns 1 when an engineering-mode frame (0x01) was decoded into *eng */
 int ld_feed_eng(ld_parser_t *p, uint8_t b, ld_eng_t *eng, uint32_t now_ms);
 
-/* ---- LD2410B serial command protocol (FD FC FB FA ... 04 03 02 01) ---- */
-#define LD_CMD_HEADER0  0xFDu
-#define LD_CMD_HEADER1  0xFCu
-#define LD_CMD_HEADER2  0xFBu
-#define LD_CMD_HEADER3  0xFAu
-#define LD_CMD_FOOTER0  0x04u
-#define LD_CMD_FOOTER1  0x03u
-#define LD_CMD_FOOTER2  0x02u
-#define LD_CMD_FOOTER3  0x01u
+/* =========================================================================
+ *  Command interface (full LD2412 command set, Protocol V1.05)
+ * ========================================================================= */
+typedef enum {
+    LD_CMD_IDLE = 0,
+    LD_CMD_SENDING = 1,
+    LD_CMD_WAIT_ACK = 2
+} ld_cmd_state_t;
 
-/* Command opcodes (per HLK-LD2410B Serial Communication Protocol V1.07) */
-#define LD_CMD_SET_FACTORY        0xA0u   /* restore factory settings */
-#define LD_CMD_SET_SENSITIVITY    0xA2u   /* set moving+stationary sensitivity */
-#define LD_CMD_SET_RANGE_GATE     0xA3u   /* set max detection range gate (2-8 m) */
-#define LD_CMD_SET_BLIND_ZONE     0xA6u   /* set blind zone (0-255 cm) */
-#define LD_CMD_SET_ENG_MODE       0xA7u   /* engineering mode on/off */
-#define LD_CMD_QUERY_VERSION      0xA1u   /* query firmware version */
+/* Transmit callback: app.c wires this to HAL_UART_Transmit on huart5 */
+typedef void (*ld_tx_byte_fn)(uint8_t b);
 
-/* Sensitivity encoding: 0-9 per gate pair (moving, stationary).
- * 9 = maximum sensitivity (best detection, more false positives),
- * 1 = minimum sensitivity (fewer false positives, shorter range). */
-#define LD_SENS_MIN 1u
-#define LD_SENS_MAX 9u
-#define LD_SENS_DEFAULT_MOV 8u
-#define LD_SENS_DEFAULT_STAT 8u
+typedef struct {
+    ld_cmd_state_t state;
+    ld_tx_byte_fn tx;
+    uint16_t cmd_word;
+    uint8_t value[16];
+    uint8_t value_len;
+    uint8_t frame[32];
+    uint8_t frame_pos, frame_len;
+    uint32_t t_start;
+    uint8_t retries;
+    /* ACK frame parser state */
+    uint8_t ack_st;
+    uint16_t ack_len, ack_n;
+    uint8_t ack_buf[32];
+    uint8_t ack_status;
+    uint8_t ack_data[16];
+    uint8_t ack_data_len;
+    int done;                       /* 1 when command completed (ok or fail) */
+    int ok;                         /* 1 if last command succeeded */
+} ld_cmd_t;
 
-/* Range gate: 2..8 meters.  8 m = maximum range. */
-#define LD_RANGE_MIN 2u
-#define LD_RANGE_MAX 8u
-#define LD_RANGE_DEFAULT 8u
+/* Command words (per HLK-LD2412 Serial Communication Protocol V1.05) */
+#define LD_CMD_ENABLE_CONFIG      0x00FFu   /* Enable configuration (value 0x0001) */
+#define LD_CMD_END_CONFIG         0x00FEu   /* End configuration */
+#define LD_CMD_RESOLUTION         0x0001u   /* Radar resolution (6 bytes) */
+#define LD_CMD_READ_RESOLUTION    0x0011u   /* Read resolution */
+#define LD_CMD_BASE_PARAMS        0x0002u   /* Basic params: min_gate,max_gate,dwell(2s LE),polarity (5 bytes) */
+#define LD_CMD_READ_BASE_PARAMS   0x0012u   /* Read base parameters */
+#define LD_CMD_MOTION_SENSITIVITY 0x0003u   /* Motion sensitivity per gate (14 bytes) */
+#define LD_CMD_STATIC_SENSITIVITY 0x0004u   /* Static sensitivity per gate (14 bytes) */
+#define LD_CMD_ENGINEERING_ON     0x0062u   /* Enable engineering mode */
+#define LD_CMD_ENGINEERING_OFF    0x0063u   /* Disable engineering mode (lower power/heat) */
+#define LD_CMD_MOTION_SENS_QUERY  0x0013u   /* Query motion sensitivity */
+#define LD_CMD_STATIC_SENS_QUERY  0x0014u   /* Query static sensitivity */
+#define LD_CMD_FW_VERSION         0x0015u   /* Read firmware version */
+#define LD_CMD_BAUD_RATE          0x001Au   /* Set baud rate */
+#define LD_CMD_FACTORY_RESET      0x001Bu   /* Restore factory settings */
+#define LD_CMD_REBOOT             0x001Cu   /* Reboot module */
+#define LD_CMD_SET_BLUETOOTH      0x00A4u   /* Bluetooth switch: 0x0000 OFF, 0x0100 ON */
 
-/* Blind zone: 0..255 cm.  0 = no blind zone (maximum range). */
-#define LD_BLIND_MIN 0u
-#define LD_BLIND_MAX 255u
-#define LD_BLIND_DEFAULT 0u
+/* Frame constants */
+#define LD_FRAME_HDR0  0xFDu
+#define LD_FRAME_HDR1  0xFCu
+#define LD_FRAME_HDR2  0xFBu
+#define LD_FRAME_HDR3  0xFAu
+#define LD_FRAME_FOOT0 0x04u
+#define LD_FRAME_FOOT1 0x03u
+#define LD_FRAME_FOOT2 0x02u
+#define LD_FRAME_FOOT3 0x01u
 
-/* Build a command frame into *out (max 64 bytes).  Returns frame length, or 0 on error. */
-int ld_build_cmd(uint8_t opcode, const uint8_t *args, uint8_t nargs, uint8_t *out, uint8_t out_len);
+/* Basic target data output frame header: FD 02 01 04 */
+#define LD_DATA_HDR0   0xFDu
+#define LD_DATA_HDR1   0x02u
+#define LD_DATA_HDR2   0x01u
+#define LD_DATA_HDR3   0x04u
+#define LD_DATA_TAIL0  0xF8u
+#define LD_DATA_TAIL1  0xF7u
+#define LD_DATA_TAIL2  0xF6u
+#define LD_DATA_TAIL3  0xF5u
 
-/* Convenience: build the full "best quality / max range" config frame sequence.
- * Writes frames into *out, returns total bytes written (multiple frames concatenated). */
-int ld_build_max_config(uint8_t *out, uint8_t out_len);
+/* ---- Command encoder ---- */
+/* Builds a command frame into *out, returns frame length (0 if out too small) */
+size_t ld_build_cmd_frame(uint16_t cmd_word, const uint8_t *value, uint8_t value_len,
+                          uint8_t *out, size_t out_len);
 
-/* Transmit a command frame over the given UART handle (non-blocking, IT mode). */
-int ld_send_cmd(UART_HandleTypeDef *huart, uint8_t opcode, const uint8_t *args, uint8_t nargs);
+/* ---- Command state machine (non-blocking) ---- */
+void ld_cmd_init(ld_cmd_t *c, ld_tx_byte_fn tx);
+int  ld_cmd_send(ld_cmd_t *c, uint16_t cmd_word, const uint8_t *value, uint8_t value_len,
+                 uint32_t now_ms);
+/* Call from app_loop; transmits pending bytes via c->tx. Returns 1 if a byte was sent. */
+int  ld_cmd_poll(ld_cmd_t *c, uint32_t now_ms);
+/* Feed an incoming UART byte (ACK response); returns 1 when command completed */
+int  ld_cmd_ack_byte(ld_cmd_t *c, uint8_t b, uint32_t now_ms);
+int  ld_cmd_done(const ld_cmd_t *c);
+int  ld_cmd_ok(const ld_cmd_t *c);
 
-#endif
+/* ---- Convenience: bounded init-time configuration sequences ---- */
+/* Each returns 1 when the sequence has completed (success or final failure). */
+int ld_config_begin(ld_cmd_t *c, uint32_t now_ms);
+int ld_config_end(ld_cmd_t *c, uint32_t now_ms);
+int ld_engineering_mode(ld_cmd_t *c, int enable, uint32_t now_ms);
+int ld_set_motion_sensitivity(ld_cmd_t *c, const uint8_t gates[14], uint32_t now_ms);
+int ld_set_static_sensitivity(ld_cmd_t *c, const uint8_t gates[14], uint32_t now_ms);
+int ld_set_base_params(ld_cmd_t *c, uint8_t min_gate, uint8_t max_gate,
+                       uint16_t dwell_s, uint8_t polarity, uint32_t now_ms);
+int ld_get_fw_version(ld_cmd_t *c, uint32_t now_ms);
+int ld_reboot(ld_cmd_t *c, uint32_t now_ms);
+int ld_factory_reset(ld_cmd_t *c, uint32_t now_ms);
+int ld_disable_bluetooth(ld_cmd_t *c, uint32_t now_ms);
+
+#include "stm32f7xx_hal.h"
+#define LD_CMD_ENABLE_CONF    LD_CMD_ENABLE_CONFIG
+#define LD_CMD_END_CONF       LD_CMD_END_CONFIG
+#define LD_CMD_ENG_MODE_ON    LD_CMD_ENGINEERING_ON
+#define LD_CMD_ENG_MODE_OFF   LD_CMD_ENGINEERING_OFF
+
+int ld_send_cmd(UART_HandleTypeDef *huart, uint16_t cmd_word, const uint8_t *val, uint16_t val_len);
+int ld_init_thermal_safe(UART_HandleTypeDef *huart);
+
+#endif /* LD2412_H */

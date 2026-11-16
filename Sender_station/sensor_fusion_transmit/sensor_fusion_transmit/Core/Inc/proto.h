@@ -19,7 +19,9 @@ enum {
     PKT_POWER_CRIT   = 0x04, PKT_TELEMETRY   = 0x05, PKT_MOTORS_DELTA = 0x06,
     PKT_ENV          = 0x07, PKT_CMD         = 0x08, PKT_ACK          = 0x09
 };
-enum { CMD_ESTOP = 0x01, CMD_SYNC_TIME = 0x02 };
+enum { CMD_ESTOP = 0x01, CMD_SYNC_TIME = 0x02,
+       CMD_RADAR_SENS = 0x10, CMD_RADAR_RANGE = 0x11,
+       CMD_RADAR_BLIND = 0x12, CMD_RADAR_ENG_MODE = 0x13 };
 
 #define PROTO_HDR_LEN      10u   /* sum of the fields in Table 1 (the PDF says 11 - see notes) */
 #define PROTO_CRC_LEN      2u
@@ -46,10 +48,15 @@ typedef struct PK {            /* 23 B */
     uint16_t speed_cms; uint16_t hdg_cdeg; uint8_t fix; uint8_t sats; uint8_t hdop_x10;
 } pl_gps_t;
 
-typedef struct PK {            /* 12 B */
+typedef struct PK {            /* 26 B (was 12 B) */
     uint32_t t_ms; uint8_t target_state; uint8_t human;
     uint16_t mov_dist_cm; uint8_t mov_energy; uint16_t stat_dist_cm; uint8_t stat_energy;
+    /* Engineering mode: per-range-gate energy (7 gates, 2-8 m) */
+    uint8_t eng_mov_gates[7];   /* energy per gate for moving   */
+    uint8_t eng_stat_gates[7];  /* energy per gate for stationary */
+    uint8_t eng_valid;          /* 1 when engineering mode data is valid */
 } pl_radar_t;
+_Static_assert(sizeof(pl_radar_t) == 27u, "pl_radar_t size");
 
 typedef struct PK {            /* 13 B */
     uint32_t t_ms; uint16_t tx_count; uint16_t retry_count; uint16_t drop_count;
