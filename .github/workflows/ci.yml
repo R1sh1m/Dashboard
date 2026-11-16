@@ -49,3 +49,32 @@ jobs:
           name: artemis-ground-station-installer
           path: release/*.exe
           retention-days: 30
+
+      - name: Create GitHub Release with installer
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.exe
+          tag_name: v${{ github.run_number }}
+          name: Artemis Ground Station v${{ github.run_number }}
+          body: |
+            One-click installer for the Artemis Ground Station Dashboard.
+            
+            ## What's included
+            - React dashboard + Express/WebSocket bridge server
+            - Electron runtime (desktop window)
+            - Silicon Labs CP210x USB-to-UART driver (installed on first run)
+            - Windows Firewall rule for port 3001 (LAN streaming)
+            
+            ## First-run setup
+            1. Plug the ESP32 ground bridge into your laptop's USB port
+            2. Run the installer
+            3. Complete the setup wizard (API keys, drivers, firewall, serial port)
+            4. Dashboard launches — connection toast shows local + LAN URLs
+            
+            ## Access from other devices
+            http://<laptop-wifi-ip>:3001
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
