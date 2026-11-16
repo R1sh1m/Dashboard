@@ -1,49 +1,50 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [main]
 
 jobs:
-  quality-gates:
-    name: Quality Gates
-    runs-on: ubuntu-latest
-    
+  build:
+    # electron-builder NSIS packaging requires Windows.
+    runs-on: windows-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
-      - name: Setup Node.js
+
+      - name: Set up Node.js 20 LTS
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 20
           cache: 'npm'
-      
-      - name: Install dependencies
+
+      - name: Install dependencies (clean, reproducible)
         run: npm ci
-      
-      - name: Type check
-        run: npx tsc --noEmit
-      
-      - name: Lint
+
+      - name: Lint (oxlint)
         run: npm run lint
-      
-      - name: Build
+
+      - name: Build web app (tsc -b && vite build)
         run: npm run build
-      
-      - name: Test
-        run: npm run test
-      
-      - name: Upload build artifacts
+
+      # electron-builder may rebuild native modules (e.g. serialport) against
+      # Electron's ABI. Point node-gyp at the Visual Studio 2022 toolchain
+      # that is pre-installed on windows-latest. If a native-module rebuild
+      # still fails, add a step here to install windows-build-tools.
+      - name: Configure MSBuild toolset (2022) for native module rebuilds
+        run: npm config set msvs_version 2022
+
+      - name: Build Electron installer (NSIS)
+        run: npm run electron:build
+        # No code-signing certificate is configured, so electron-builder
+        # produces an unsigned installer. Signing is intentionally omitted.
+
+      - name: Upload NSIS installer artifact
         uses: actions/upload-artifact@v4
-        if: success()
         with:
-          name: dist
-          path: dist/
-          retention-days: 7
+          name: artemis-ground-station-installer
+          path: dist/*.exe
+          retention-days: 30

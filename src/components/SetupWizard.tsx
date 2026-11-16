@@ -71,10 +71,25 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
           Welcome to Artemis
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-neutral-400 max-w-md">
-          This setup wizard will configure your ground station so you can connect
-          to the Artemis rover via the ESP32 ground bridge, stream telemetry,
-          and visualize the rover's position on a live map.
+          This wizard sets up your Artemis ground station end to end: it connects
+          your laptop to the ESP32 ground bridge over USB, streams rover telemetry
+          over a WebSocket bridge on port 3001, and renders the rover's position
+          on a live map — both on this laptop and over your LAN.
         </p>
+        <div className="setup-instruction mt-4">
+          <p className="text-neutral-400 font-medium">What you'll need handy:</p>
+          <ul className="text-left text-neutral-400 list-disc pl-4 space-y-1 mt-1 max-w-md mx-auto">
+            <li>The ESP32 ground bridge plugged into your laptop's USB port</li>
+            <li>A Map / tiles API key (required — the map won't load without it)</li>
+          </ul>
+        </div>
+        <div className="setup-hint mt-4">
+          <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
+          <p>
+            This is a one-time setup. You can re-run it later from the dashboard
+            settings if you change your network, drivers, or serial port.
+          </p>
+        </div>
       </div>
       <button
         className="setup-btn-primary"
@@ -197,9 +212,17 @@ function StepApiKeys({ ctx, onNext, onBack }: {
     <div className="flex flex-col gap-6">
       <h2 className="text-lg font-semibold text-[#f5f5f7]">API Keys</h2>
       <p className="text-xs text-neutral-400">
-        A Map API key is <strong>required</strong> for the map to load. Weather and
-        cloud telemetry keys are optional but recommended.
+        Enter your API keys below. The <strong>Map / Tiles API key is required</strong> —
+        the live map and rover tracking won't load without it. Weather and cloud
+        telemetry keys are optional but recommended for full sensor visibility.
       </p>
+      <div className="setup-instruction">
+        <p>
+          <strong>Map API key</strong> — Get a free key from your map tile provider
+          (e.g., OpenStreetMap-based tile services, Mapbox, or Stadia Maps).
+          The key is stored locally and never uploaded to external servers.
+        </p>
+      </div>
       {mapKeyError && (
         <p className="text-xs text-[#ff453a]" role="alert">
           Please enter a Map API key to continue.
@@ -291,8 +314,15 @@ function StepDrivers({ onNext, onBack }: { onNext: () => void; onBack: () => voi
       <h2 className="text-lg font-semibold text-[#f5f5f7]">USB Drivers</h2>
       <p className="text-xs text-neutral-400">
         The ESP32 ground bridge uses a Silicon Labs CP210x USB-to-UART bridge.
-        Install the driver to ensure reliable serial communication.
+        Installing the driver allows Windows to recognize the ESP32 as a serial (COM) port.
       </p>
+      <div className="setup-instruction">
+        <p>
+          Click <strong>Download & Install Drivers</strong> to fetch and install the official
+          Silicon Labs CP210x driver. This is a one-time install — the driver persists
+          across reboots and USB reconnections.
+        </p>
+      </div>
 
       <div className="glass-panel rounded-xl p-5 flex flex-col gap-4">
         <div className="flex items-center gap-3">
@@ -353,6 +383,17 @@ function StepDrivers({ onNext, onBack }: { onNext: () => void; onBack: () => voi
            status === 'downloading' ? 'Downloading…' :
            'Download & Install Drivers'}
         </button>
+
+        {status === 'failed' && (
+          <div className="setup-hint">
+            <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
+            <p>
+              <strong>Driver install failed?</strong> Run the app as Administrator (right-click
+              the .exe → Run as administrator), then try again. After a successful install,
+              unplug and reconnect the ESP32 USB cable.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-3 mt-auto">
@@ -416,6 +457,13 @@ function StepFirewall({ onNext, onBack }: { onNext: () => void; onBack: () => vo
         Port <strong>3001</strong> must be open for LAN streaming (WebSocket bridge).
         Allow inbound connections so other devices on your network can access the dashboard.
       </p>
+      <div className="setup-instruction">
+        <p>
+          Clicking <strong>Allow Firewall Access</strong> creates a Windows Defender Firewall
+          rule that permits inbound TCP connections on port 3001. This is required for the
+          WebSocket bridge that relays telemetry to tablets and phones on your LAN.
+        </p>
+      </div>
 
       <div className="glass-panel rounded-xl p-5 flex flex-col gap-4">
         <div className="flex items-center gap-3">
@@ -537,16 +585,31 @@ function StepSerialPort({ ctx, onNext, onBack }: {
         Select the serial port connected to the ESP32 ground bridge.
         Ports with known USB-to-UART bridge vendors (CP210x, CH340, FTDI, Espressif) are listed first.
       </p>
+      <div className="setup-instruction">
+        <p>
+          Plug the ESP32 into your laptop's USB port, then select the matching COM port
+          from the list below. The first entry is auto-selected if it matches a known
+          bridge vendor. Click <strong>Connect & Test</strong> to verify the link.
+        </p>
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-8">
           <div className="text-sm text-neutral-400">Detecting serial ports…</div>
         </div>
       ) : ports.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-8">
+        <div className="flex flex-col items-center gap-3 py-8">
           <Usb size={24} className="text-neutral-600" aria-hidden="true" />
           <p className="text-sm text-neutral-400">No serial ports detected</p>
           <p className="text-xs text-neutral-500">Ensure the ESP32 bridge is connected via USB</p>
+          <div className="setup-hint mt-2">
+            <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
+            <p>
+              <strong>No ports showing?</strong> Check that the USB cable is plugged in firmly,
+              install the CP210x driver on the previous step, or try a different USB port.
+              Some cables are charge-only — use a data-capable USB cable.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -646,6 +709,15 @@ function StepFinish({ ctx, onFinish, onBack }: {
         Your ground station is ready. Review your configuration below, then click
         <strong> Finish Setup</strong> to launch the dashboard.
       </p>
+      <div className="setup-instruction">
+        <p>
+          When you click <strong>Finish Setup</strong>, the dashboard will launch and begin
+          streaming telemetry from the ESP32 bridge. A connection toast will appear in the
+          bottom-right corner showing the <strong>local URL</strong> (http://localhost:3001) and
+          the <strong>LAN URL</strong> (http://&lt;your-ip&gt;:3001) so you can access the
+          dashboard from tablets and phones on the same network.
+        </p>
+      </div>
 
       <div className="glass-panel rounded-xl p-5 flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -898,6 +970,32 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         .setup-wizard .setup-btn-ghost:focus-visible {
           outline: 2px solid #0A84FF;
           outline-offset: 2px;
+        }
+        .setup-wizard .setup-instruction {
+          color: #c7c7cc;
+          font-size: 0.8125rem;
+          line-height: 1.5;
+        }
+        .setup-wizard .setup-instruction strong {
+          color: #f5f5f7;
+        }
+        .setup-wizard .setup-hint {
+          background: rgba(255, 159, 10, 0.10);
+          border: 1px solid rgba(255, 159, 10, 0.25);
+          border-radius: 10px;
+          padding: 0.75rem 1rem;
+          display: flex;
+          align-items: flex-start;
+          gap: 0.625rem;
+        }
+        .setup-wizard .setup-hint p {
+          color: #ffd60a;
+          font-size: 0.75rem;
+          line-height: 1.45;
+          margin: 0;
+        }
+        .setup-wizard .setup-hint p strong {
+          color: #fff;
         }
       `}</style>
 

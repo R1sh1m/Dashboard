@@ -175,6 +175,7 @@ All pin assignments are locked in [`Docs/HARDWARE_WIRING_PIN_LOCK.md`](Docs/HARD
 - **Node.js 20+** and **npm**
 - Modern browser with **Web Serial API** support (Chrome 89+, Edge 89+)
 - Ground-side ESP32-S3 hardware (or simulator) for live telemetry
+- **Packaged app (recommended):** The `.exe` installer handles everything in one click — driver download, firewall rule, and serial port detection. See [Docs/ELECTRON_SETUP.md](Docs/ELECTRON_SETUP.md) for the full walkthrough.
 
 ### Clone & Install
 
@@ -198,6 +199,19 @@ Open the URL in a supported browser, click **Connect** in the Wireless Link pane
 npm run build   # Type-check and bundle for production
 npm run preview # Serve the built files locally
 ```
+
+### Packaged App (One-Click Installer)
+
+The `.exe` installer is the recommended end-user distribution for the Artemis Ground Station. It bundles the dashboard UI, the bridge server, and the Electron runtime into a single installable package — no Node.js installation required.
+
+**To install**:
+1. Download the `.exe` installer from the project releases page
+2. Run the installer and follow the prompts
+3. Launch "Artemis Ground Station" from the Start menu
+
+**First run**: The setup wizard will guide you through 6 steps — Welcome, API Keys, Drivers (CP210x), Firewall (port 3001), Serial Port, and Finish — exactly as documented in [`Docs/ELECTRON_SETUP.md`](Docs/ELECTRON_SETUP.md). The Map API key is required; weather and cloud keys are optional.
+
+**Connection toast**: After setup completes, a connection toast appears in the bottom-right corner showing the **local URL** (`http://localhost:3001`) and the **LAN URL** (`http://<laptop-ip>:3001`). Share the LAN URL with tablets and phones on the same Wi-Fi network to view the dashboard remotely.
 
 ### Multi-Device Field Access (WebSocket Bridge)
 
@@ -242,6 +256,22 @@ GET http://<laptop-wifi-ip>:3001/api/status
 **Transport modes:** The dashboard defaults to the WebSocket bridge. On the laptop with the ESP32 plugged in via USB, you can toggle to direct WebSerial transport if needed. Tablets and phones always use the WebSocket bridge (Web Serial API is not supported on mobile browsers).
 
 **Note:** The ESP32 must be physically plugged into the laptop's USB port for live telemetry. The tablet/phone cannot reach the laptop's USB ports directly — the bridge server relays all telemetry and commands over WebSocket.
+
+---
+
+## Packaged App (One-Click Installer)
+
+For end users who don't want to run Node.js or the command line, the dashboard is distributed as a single `.exe` installer built with Electron. It bundles the dashboard, the Express/WebSocket bridge server, and the Electron runtime, and walks the user through a first-run setup wizard:
+
+1. **API keys** — Map / Tiles API key (required), plus optional Weather and Cloud keys
+2. **Drivers** — Downloads and installs the Silicon Labs CP210x USB-to-UART driver
+3. **Firewall** — Opens inbound TCP port 3001 for LAN streaming
+4. **Serial port** — Selects and tests the ESP32 COM port
+5. **Finish** — Launches the dashboard
+
+After setup, a small connection toast shows the dashboard URL (`http://localhost:3001` locally, `http://<laptop-ip>:3001` over LAN) and updates automatically if the laptop's IP changes.
+
+The installer is built automatically on every push to `main` via GitHub Actions (`.github/workflows/ci.yml`) and uploaded as an artifact. See [Docs/ELECTRON_SETUP.md](Docs/ELECTRON_SETUP.md) for the complete setup walkthrough and troubleshooting.
 
 ---
 
@@ -306,6 +336,7 @@ artemis-dashboard/
 | [`Docs/STM32_Sender.md`](Docs/STM32_Sender.md) | STM32 sender build & flash guide |
 | [`Docs/DESIGN.md`](Docs/DESIGN.md) | Dashboard UI/UX design system |
 | [`Docs/MULTI_DEVICE_SETUP.md`](Docs/MULTI_DEVICE_SETUP.md) | Multi-device field setup (tablet/phone access via WebSocket bridge) |
+| [`Docs/ELECTRON_SETUP.md`](Docs/ELECTRON_SETUP.md) | Packaged app (.exe) setup walkthrough and troubleshooting |
 
 ---
 
