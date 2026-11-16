@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
-import { AlertTriangle, Layers, LocateFixed, Minus, MousePointer2, Navigation2, Plus } from 'lucide-react';
+import { AlertTriangle, Layers, LocateFixed, Minus, MousePointer2, Navigation2, Plus, Menu, X } from 'lucide-react';
 import { MapView, type MapViewHandle } from './components/MapView';
 import { LeftSidebar } from './components/LeftSidebar';
 import { PoiModal } from './components/PoiModal';
@@ -63,7 +63,11 @@ export function App() {
     return stored === 'satellite' || stored === 'terrain' || stored === 'osm' ? stored : 'osm';
   });
   const [isLklExpanded, setIsLklExpanded] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEstopActive, setIsEstopActive] = useState(false);
+  // True when any modal overlay (telemetry sheet or POI drawer) is open.
+  // Drives the dimmed .sheet-overlay behind them.
+  const isSheetOverlayOpen = isSensorSheetOpen || isPoiModalOpen;
   const [isSendingRadarConfig, setIsSendingRadarConfig] = useState(false);
   // Radar configuration (LD2410B) — operator-tunable sensitivity, range, blind zone,
   // engineering mode. Sent to the rover via serial CMD_RADAR_* commands.
@@ -97,6 +101,19 @@ export function App() {
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  // Escape closes any open drawer/sheet/POI modal on all screen sizes.
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsSidebarOpen(false);
+        setIsSensorSheetOpen(false);
+        setIsPoiModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
   }, []);
 
   const addLog = useCallback((level: LogEntry['level'], subsystem: string, message: string) => {
@@ -303,9 +320,18 @@ export function App() {
     setTelemetry((current) => current ? { ...current, bot_status: { ...current.bot_status, state: 'EMERGENCY_STOP' } } : current);
   };
   const handleSidebarEStop = () => {
+    setIsSidebarOpen(false);
     setIsSensorSheetOpen(false);
     setIsPoiModalOpen(false);
     void triggerEStop();
+  };
+
+  // Closes every overlay (sidebar, telemetry sheet, POI modal) — used by
+  // Escape and by tapping the sheet overlay backdrop.
+  const handleOverlayClose = () => {
+    setIsSidebarOpen(false);
+    setIsSensorSheetOpen(false);
+    setIsPoiModalOpen(false);
   };
   /** Send LD2410B radar configuration to the rover via serial -> LoRa PKT_CMD. */
   const sendRadarConfig = async () => {
@@ -434,6 +460,19 @@ export function App() {
           isWarning={signalLost || gpsInvalid}
         />
       </div>
+      {/* Off-canvas sidebar toggle — mobile only (hidden on desktop via CSS) */}
+      <button
+        className="sidebar-hamburger"
+        onClick={() => setIsSidebarOpen((prev) => !prev)}
+        aria-label="Open sidebar"
+        aria-expanded={isSidebarOpen}
+      >
+        {isSidebarOpen ? (
+          <X size={20} aria-hidden="true" />
+        ) : (
+          <Menu size={20} aria-hidden="true" />
+        )}
+      </button>
       <a className="skip-link" href="#map-main">Skip to map</a>
       <main id="map-main" className="maps-ui" aria-label="Artemis ground station map">
         {/* Collapsible Last Known Location button positioned above map controls */}
@@ -477,6 +516,14 @@ export function App() {
           E-STOP ACTIVE — Connection severed. Manually reset to restore control.
         </div>
       )}
+      {/* Dimmed backdrop behind the telemetry sheet and POI modal on mobile */}
+      {isSheetOverlayOpen && (
+        <div
+          className={`sheet-overlay ${isSheetOverlayOpen ? 'open' : ''}`}
+          onClick={handleOverlayClose}
+          aria-hidden="true"
+        />
+      )}
       <LeftSidebar
         botState={botState}
         isEStop={isEStop}
@@ -484,6 +531,8 @@ export function App() {
         loraRssi={telemetry?.link?.rssi_dbm}
         activeNav={activeNav}
         setActiveNav={setActiveNav}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
         onOpenSensors={() => {
           setIsPoiModalOpen(false);
           setVisibleTabs(['bot', 'power', 'motors']);
@@ -504,6 +553,7 @@ export function App() {
       />
       <SensorSheet
         isOpen={isSensorSheetOpen}
+        onClose={() => setIsSensorSheetOpen(false)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         telemetry={telemetry}

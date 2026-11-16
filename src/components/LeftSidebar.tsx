@@ -9,6 +9,7 @@ import {
   Satellite,
   Settings,
   TerminalSquare,
+  X,
 } from 'lucide-react';
 import type { SubsystemTab } from './SensorSheet';
 
@@ -28,6 +29,9 @@ interface LeftSidebarProps {
   onTriggerEStop?: () => void;
   onConnectSerial?: () => void;
   onDisconnectSerial?: () => void;
+  /** When true the drawer is open (off-canvas on mobile, always on desktop). */
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 // Status pill colors for ROBOT state
@@ -62,6 +66,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onTriggerEStop = () => {},
   onConnectSerial,
   onDisconnectSerial,
+  isOpen = false,
+  onClose = () => {},
 }) => {
   const robotStyle = ROBOT_PILL[botState] ?? ROBOT_PILL.STANDBY;
   const estopStyle = ROBOT_PILL.EMERGENCY_STOP;
@@ -75,15 +81,44 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const loraBars = loraRssi >= -75 ? 4 : loraRssi >= -85 ? 3 : loraRssi >= -95 ? 2 : 1;
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${isOpen ? ' open' : ''}`}>
       <div className="sidebar-brand">
         <span className="artemis-logo-frame">
           <img src="/assets/artemis-logo.png" alt="Artemis" />
         </span>
         <strong>Dashboard</strong>
+        {isOpen && (
+          <button type="button" onClick={onClose} className="sidebar-close" aria-label="Close sidebar">
+            <X size={20} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       <div className="sidebar-body">
+        {/* Connect/Disconnect serial: first action item directly below the header */}
+        <button
+          type="button"
+          className="pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative cursor-pointer transition-all hover:brightness-125 active:scale-95 shadow-sm h-10 min-w-[112px] w-full"
+          onClick={serialStatus === 'CONNECTED' ? onDisconnectSerial : onConnectSerial}
+          aria-label={serialStatus === 'CONNECTED' ? 'Disconnect serial link' : 'Connect serial link'}
+          title={
+            serialStatus === 'CONNECTED'
+              ? 'ESP32 connected (click to disconnect)'
+              : serialStatus === 'ERROR'
+                ? 'Connection error: click to retry connecting to COM3'
+                : 'Click to connect ESP32 on COM3'
+          }
+          style={{
+            backgroundColor: linkStyle.bg,
+            border: linkStyle.border,
+            color: linkStyle.text,
+            fontWeight: 700,
+            boxShadow: serialStatus === 'ERROR' ? '0 2px 10px rgba(255, 69, 58, 0.45)' : undefined,
+          }}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${linkStyle.dot} ${linkStyle.animate || ''} absolute left-3`} />
+          {serialStatus === 'DISCONNECTED' ? 'CONNECT' : serialStatus === 'ERROR' ? 'ERROR · RETRY' : serialStatus}
+        </button>
         <div className="sidebar-navigation" aria-label="Ground station navigation">
           <button
             className={`sidebar-nav-item${activeNav === 'home' ? ' active' : ''}`}
@@ -167,29 +202,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <span className={`w-1.5 h-1.5 rounded-full ${effectiveDot} absolute left-3`} />
             {botState}
           </span>
-          <button
-            type="button"
-            className="pill inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium relative cursor-pointer transition-all hover:brightness-125 active:scale-95 shadow-sm h-10 min-w-[112px]"
-            onClick={serialStatus === 'CONNECTED' ? onDisconnectSerial : onConnectSerial}
-            aria-label={serialStatus === 'CONNECTED' ? 'Disconnect serial link' : 'Connect serial link'}
-            title={
-              serialStatus === 'CONNECTED'
-                ? 'ESP32 connected (click to disconnect)'
-                : serialStatus === 'ERROR'
-                  ? 'Connection error: click to retry connecting to COM3'
-                  : 'Click to connect ESP32 on COM3'
-            }
-            style={{
-              backgroundColor: linkStyle.bg,
-              border: linkStyle.border,
-              color: linkStyle.text,
-              fontWeight: 700,
-              boxShadow: serialStatus === 'ERROR' ? '0 2px 10px rgba(255, 69, 58, 0.45)' : undefined,
-            }}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${linkStyle.dot} ${linkStyle.animate || ''} absolute left-3`} />
-            {serialStatus === 'DISCONNECTED' ? 'CONNECT' : serialStatus === 'ERROR' ? 'ERROR · RETRY' : serialStatus}
-          </button>
         </div>
       </div>
     </aside>

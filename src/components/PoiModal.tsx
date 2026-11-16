@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PoiCategory, PointOfInterest } from '../types/telemetry';
 import { MapPin, User, Droplets, Target, Plus, X, Trash2 } from 'lucide-react';
 
@@ -35,6 +35,19 @@ export const PoiModal: React.FC<PoiModalProps> = ({
   const [category, setCategory] = useState<PoiCategory>('MANUAL_MARK');
   const [title, setTitle] = useState('');
 
+  // Escape closes the POI drawer.
+  // Placed before the early return so hook order stays stable across renders.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -57,8 +70,9 @@ export const PoiModal: React.FC<PoiModalProps> = ({
 
   return (
       <div
-        className={`poi-panel ${isOpen ? 'is-open' : ''}`}
+        className={`poi-panel is-open${isOpen ? ' open' : ''}`}
         role="dialog"
+        aria-modal="true"
         aria-label="Mark Point of Interest"
       >
         <div className="sheet-header poi-sheet-header">

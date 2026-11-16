@@ -1111,6 +1111,10 @@ body {
   display: none;
 }
 
+.sidebar-hamburger {
+  display: none;
+}
+
 .status-dot {
   width: 7px;
   height: 7px;
@@ -2322,6 +2326,22 @@ select:focus-visible {
   background: rgba(255, 255, 255, .14);
 }
 
+.sidebar-close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  color: #e6e6e9;
+  background: transparent;
+  cursor: pointer;
+}
+.sidebar-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .sheet-close:focus-visible,
 .telemetry-tab:focus-visible {
   outline: 2px solid #0a84ff;
@@ -2963,6 +2983,11 @@ select:focus-visible {
   }
 
   .maps-shell .sidebar .sidebar-brand {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
     padding: 20px 14px 18px;
   }
 
@@ -3012,6 +3037,159 @@ select:focus-visible {
     right: 12px;
   }
 
+}
+
+/* ===== Mobile-responsive layout (760px breakpoint) =====
+   Off-canvas sidebar, bottom telemetry sheet, full-width POI drawer,
+   repositioned map controls / LKL button, sheet overlay. */
+@media (max-width: 760px) {
+  /* Hamburger menu — appears on mobile only */
+  .sidebar-hamburger {
+    display: grid;
+    position: fixed;
+    top: 22px;
+    left: 22px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(25, 26, 29, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e6e6e9;
+    cursor: pointer;
+    z-index: 60;
+    place-items: center;
+  }
+
+  /* LeftSidebar off-canvas drawer */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -220px;
+    width: 220px;
+    height: 100vh;
+    transition: left 0.3s ease;
+    z-index: 55;
+  }
+  .sidebar.open {
+    left: 0;
+  }
+  .maps-shell .sidebar {
+    left: -220px;
+    width: 220px;
+    height: 100vh;
+    z-index: 55;
+  }
+  .maps-shell .sidebar.open {
+    left: 0;
+  }
+
+  /* Map controls — bottom-right on mobile */
+  .map-controls,
+  .maps-shell .map-controls {
+    top: auto;
+    bottom: 20px;
+    right: 20px;
+  }
+  .zoom-controls,
+  .maps-shell .zoom-controls {
+    top: auto;
+    bottom: 84px;
+    right: 20px;
+  }
+
+  /* LKL button — top-left on mobile */
+  .lkl-btn {
+    top: 22px;
+    left: 22px;
+    right: auto;
+  }
+
+  /* SensorSheet — bottom sheet */
+  .telemetry-sheet {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: calc(100vh - 200px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+    z-index: 60;
+  }
+  .telemetry-sheet.open {
+    transform: translateY(0);
+  }
+
+  /* POI Modal — full-width right drawer */
+  .poi-panel {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    left: auto;
+    width: 100%;
+    height: 100vh;
+    border-radius: 18px 0 0 18px;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    z-index: 60;
+  }
+  .poi-panel.open {
+    transform: translateX(0);
+  }
+
+  /* Sheet overlay — dim background behind open sheet / POI modal */
+  .sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    z-index: 59;
+  }
+  .sheet-overlay.open {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* Sheet handle — visible as drag affordance on mobile */
+  .sheet-handle {
+    display: block;
+    width: 100%;
+    height: 44px;
+    padding: 8px;
+    cursor: grab;
+  }
+  .sheet-handle-bar {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.35);
+    margin: 0 auto;
+  }
+}
+
+/* prefers-reduced-motion: instant transitions for slide/drawer overlays */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar.open,
+  .telemetry-sheet,
+  .telemetry-sheet.open,
+  .poi-panel,
+  .poi-panel.open,
+  .sheet-overlay,
+  .sheet-overlay.open {
+    transition: none !important;
+  }
+  .lkl-btn {
+    animation: none !important;
+  }
 }
 
 /* Final pane refinements override the legacy sheet rules above. */
