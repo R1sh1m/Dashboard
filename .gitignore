@@ -34,6 +34,7 @@ makefile.init
 # ESP-IDF Build Artifacts & Configuration Backups
 esp_receiver/build/
 esp_receiver/sdkconfig.old
+esp_test/
 
 # STM32 Build & IDE Artifacts
 Sender_station/**/bin/
