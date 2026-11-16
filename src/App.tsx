@@ -4,11 +4,14 @@ import { MapView, type MapViewHandle } from './components/MapView';
 import { LeftSidebar } from './components/LeftSidebar';
 import { PoiModal } from './components/PoiModal';
 import { SensorSheet, type SubsystemTab } from './components/SensorSheet';
+import { SetupWizard } from './components/SetupWizard';
+import { ConnectionToast } from './components/ConnectionToast';
 import type { GpsData, LogEntry, PointOfInterest, TelemetryPacket } from './types/telemetry';
-import { telemetryClient } from './services/telemetryClient';
 import type { SerialConnectionStatus } from './services/telemetryTransport';
+import { telemetryClient } from './services/telemetryClient';
 import { poiDatabase } from './services/poiDatabase';
 import { MAP_TYPE_ORDER, type MapType } from './lib/mapLayers';
+import { getSetupState } from './lib/setup';
 
 // GPS move threshold in meters. Below this, the rover is treated as stationary (standby).
 const GPS_MOVE_THRESHOLD_M = 0.5;
@@ -97,6 +100,16 @@ export function App() {
   // 10-20 Hz telemetry. Critical state (serial status, GPS position, E-STOP)
   // updates synchronously.
   const [, startTransition] = useTransition();
+  // Setup wizard state
+  const [setupComplete, setSetupComplete] = useState<boolean>(false);
+
+  // Check setup state on mount
+  useEffect(() => {
+    (async () => {
+      const state = await getSetupState();
+      setSetupComplete(state.completed);
+    })();
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -283,6 +296,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    // Only connect telemetry after setup is complete
+    if (!setupComplete) return;
     telemetryClient.setCallbacks({
       onPacket: handleIncomingPacket,
       onGps: handleIncomingGps,
@@ -295,7 +310,7 @@ export function App() {
       },
     });
     void telemetryClient.connect();
-  }, [addLog, baudRate, handleIncomingGps, handleIncomingPacket]);
+  }, [addLog, baudRate, handleIncomingGps, handleIncomingPacket, setupComplete]);
 
   const connectSerial = async () => { telemetryClient.setBaudRate(baudRate); await telemetryClient.connect(); };
   const disconnectSerial = async () => telemetryClient.disconnect();
@@ -441,8 +456,16 @@ export function App() {
     mapRef.current?.recenterLkl();
   };
 
+  // Render setup wizard until setup is complete
+  if (!setupComplete) {
+    return <SetupWizard onComplete={() => {
+      setSetupComplete(true);
+    }} />;
+  }
+
   return (
-    <div className={`maps-shell ${isSensorSheetOpen ? 'sensor-open' : ''} ${isPoiModalOpen ? 'poi-mode' : ''} relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans`}>
+    <>
+      <div className={`maps-shell ${isSensorSheetOpen ? 'sensor-open' : ''} ${isPoiModalOpen ? 'poi-mode' : ''} relative w-screen h-screen overflow-hidden bg-[#0a0a0c] text-[#f5f5f7] select-none font-sans`}>
       <div className="map-full">
         <MapView
           ref={mapRef}
@@ -589,6 +612,8 @@ export function App() {
         onCategoryChange={setDraftPoiCategory}
       />
     </div>
+    <ConnectionToast />
+  </>
   );
 }
 
