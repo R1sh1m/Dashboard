@@ -68,6 +68,7 @@ let lastKnownTelemetry: TelemetryPacket | null = null;
 let commandQueue: string[] = [];
 let isProcessingCommand = false;
 let estopInFlight = false;
+let boundPort: number | null = null;
 
 // Network interface IP for LAN addressing
 const lanIp = (() => {
@@ -298,10 +299,19 @@ function startHttpServer(): Promise<number> {
 }
 
 export async function createServer(): Promise<{ server: HttpServer; port: number }> {
-  const boundPort = await startHttpServer().catch((err) => {
+  // Guard against starting the HTTP server more than once. Calling listen()
+  // on an already-bound server throws ERR_SERVER_ALREADY_LISTEN. The module is
+  // imported by electron/main.ts, which starts the server explicitly via
+  // startBackend(), so this must be safe to call multiple times.
+  if (httpServer && boundPort !== null) {
+    return { server: httpServer, port: boundPort };
+  }
+
+  const port = await startHttpServer().catch((err) => {
     console.error('[server] Failed to start HTTP server:', err);
     throw err;
   });
+  boundPort = port;
 
   // HTTP health check at /api/status returning bridge connection state
   app.get('/api/status', (_req, res) => {
@@ -373,4 +383,11 @@ void (async () => {
   }
 })();
 
-createServer();
+// Auto-start the server only when this module is run directly as a script
+// (e.g. `npm run server:start`). When imported by Electron's main process,
+// the server is started explicitly via startBackend() in electron/main.ts.
+// Guarding with import.meta.main prevents a double listen() that would throw
+// ERR_SERVER_ALREADY_LISTEN.
+if (import.meta.main) {
+  void createServer();
+}
