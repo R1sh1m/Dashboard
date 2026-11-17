@@ -31,6 +31,14 @@ vi.mock('./services/poiDatabase', () => ({
   },
 }));
 
+// In browser/dev/test mode getSetupState() always returns { completed: false },
+// which renders the SetupWizard and blocks the main dashboard. Mock it as
+// already-completed so tests exercise the dashboard UI directly.
+vi.mock('./lib/setup', () => ({
+  getSetupState: vi.fn().mockResolvedValue({ completed: true, apiKeys: {} }),
+  saveSetupState: vi.fn().mockResolvedValue(undefined),
+}));
+
 afterEach(() => {
   cleanup();
 });
@@ -49,11 +57,11 @@ afterEach(() => {
 });
 
 describe('App — Home button behavior', () => {
-  it('collapses all open panels, resets tab, and recenters the map on home click', () => {
+  it('collapses all open panels, resets tab, and recenters the map on home click', async () => {
     render(<App />);
 
-    // Open telemetry sheet
-    const telemetryBtn = screen.getByRole('button', { name: /^Telemetry$/ });
+    // Setup wizard resolves asynchronously; wait for the main dashboard to mount
+    const telemetryBtn = await screen.findByRole('button', { name: /^Telemetry$/ });
     fireEvent.click(telemetryBtn);
 
     // Telemetry sheet should be open (check for sheet element with dialog role)
@@ -80,13 +88,13 @@ describe('App — Home button behavior', () => {
     expect(mockHandle.resetZoom).not.toHaveBeenCalled();
   });
 
-  it('keeps POI list state intact when home is pressed (does not clear pois)', () => {
+  it('keeps POI list state intact when home is pressed (does not clear pois)', async () => {
     render(<App />);
 
     // Verify pois state is not reset by handleHome
     // We can't easily add a POI in this test, but we verify that clicking home
     // only closes UI panels without touching pois state
-    const homeBtn = screen.getByRole('button', { name: /^home$/i });
+    const homeBtn = await screen.findByRole('button', { name: /^home$/i });
     fireEvent.click(homeBtn);
 
     // If handleHome reset pois, we'd see a re-render with empty pois
@@ -97,11 +105,11 @@ describe('App — Home button behavior', () => {
 });
 
 describe('App — auto-collapse between panels', () => {
-  it('closes telemetry sheet when saved locations is opened', () => {
+  it('closes telemetry sheet when saved locations is opened', async () => {
     render(<App />);
 
     // Open telemetry
-    const telemetryBtn = screen.getByRole('button', { name: /^Telemetry$/ });
+    const telemetryBtn = await screen.findByRole('button', { name: /^Telemetry$/ });
     fireEvent.click(telemetryBtn);
     expect(screen.getByRole('dialog', { name: /^Telemetry$/ })).toBeTruthy();
 
@@ -115,11 +123,11 @@ describe('App — auto-collapse between panels', () => {
     expect(document.querySelector('.poi-panel')).toBeTruthy();
   });
 
-  it('closes saved locations (POI modal) when telemetry is opened', () => {
+  it('closes saved locations (POI modal) when telemetry is opened', async () => {
     render(<App />);
 
     // Open saved locations
-    const savedBtn = screen.getByRole('button', { name: /points of interest/i });
+    const savedBtn = await screen.findByRole('button', { name: /points of interest/i });
     fireEvent.click(savedBtn);
     expect(document.querySelector('.poi-panel')).toBeTruthy();
 

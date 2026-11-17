@@ -54,6 +54,12 @@ let lastKnownTelemetry = null;
 let commandQueue = [];
 let isProcessingCommand = false;
 let estopInFlight = false;
+let boundPort = null;
+// Caches the in-flight or completed server start so concurrent calls to
+// createServer() share one listen() and sequential calls return the cached
+// result. Prevents ERR_SERVER_ALREADY_LISTEN when Electron fires both
+// 'ready' and 'activate' before the first start completes.
+let serverStartPromise = null;
 // Network interface IP for LAN addressing
 const lanIp = (() => {
     const ifaces = os.networkInterfaces();
@@ -268,57 +274,80 @@ function startHttpServer() {
     });
 }
 export async function createServer() {
-    const boundPort = await startHttpServer().catch((err) => {
-        console.error('[server] Failed to start HTTP server:', err);
-        throw err;
-    });
-    // HTTP health check at /api/status returning bridge connection state
-    app.get('/api/status', (_req, res) => {
-        const bridgeStatus = serialPort && serialPort.isOpen ? 'CONNECTED' : 'DISCONNECTED';
-        const portName = serialPort?.path ?? null;
-        res.json({
-            bridgeStatus,
-            port: portName,
-            lanIp,
-            serverPort: boundPort,
-            lastKnownTelemetrySeq: lastKnownTelemetry?.seq ?? null,
-            clientsConnected: clients.size,
+    // Idempotent: if already started, return the cached server/port.
+    if (httpServer && boundPort !== null) {
+        return { server: httpServer, port: boundPort };
+    }
+
+    // Dedup concurrent calls: if a start is in-flight, await the same promise.
+    // This prevents a second listen() on an already-bound server
+    // (ERR_SERVER_ALREADY_LISTEN) when Electron fires both 'ready' and
+    // 'activate' before the first start completes.
+    if (serverStartPromise) {
+        return serverStartPromise;
+    }
+
+    serverStartPromise = startHttpServer()
+        .then((port) => {
+            boundPort = port;
+            // HTTP health check at /api/status returning bridge connection state
+            app.get('/api/status', (_req, res) => {
+                const bridgeStatus = serialPort && serialPort.isOpen ? 'CONNECTED' : 'DISCONNECTED';
+                const portName = serialPort?.path ?? null;
+                res.json({
+                    bridgeStatus,
+                    port: portName,
+                    lanIp,
+                    serverPort: boundPort,
+                    lastKnownTelemetrySeq: lastKnownTelemetry?.seq ?? null,
+                    clientsConnected: clients.size,
+                });
+            });
+
+            // WebSocket upgrade on the same HTTP port
+            wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+            wss.on('connection', (ws) => {
+                clients.add(ws);
+                console.log(`WebSocket client connected. Total clients: ${clients.size}`);
+                // Send HYDRATE immediately to late-joining clients
+                broadcastHydrate(lastKnownTelemetry, 'BRIDGE_READY');
+                // Send current status on connect
+                const bs = serialPort && serialPort.isOpen ? 'CONNECTED' : 'DISCONNECTED';
+                ws.send(JSON.stringify({
+                    type: 'STATUS',
+                    status: bs,
+                    message: 'Bridge status update',
+                    port: serialPort?.path,
+                }));
+                ws.on('close', () => {
+                    clients.delete(ws);
+                    console.log(`WebSocket client disconnected. Remaining: ${clients.size}`);
+                });
+                ws.on('message', async (message) => {
+                    let data;
+                    try {
+                        data = JSON.parse(message.toString());
+                    }
+                    catch {
+                        return; // Ignore non-JSON messages
+                    }
+                    if (data.type === 'COMMAND' && data.cmd) {
+                        // Forward command to serial with queue pacing and ESTOP priority
+                        queueCommand(data.cmd);
+                    }
+                });
+            });
+
+            return { server: httpServer, port: boundPort };
+        })
+        .catch((err) => {
+            console.error('[server] Failed to start HTTP server:', err);
+            serverStartPromise = null; // allow retry on next call
+            throw err;
         });
-    });
-    // WebSocket upgrade on the same HTTP port
-    wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-    wss.on('connection', (ws) => {
-        clients.add(ws);
-        console.log(`WebSocket client connected. Total clients: ${clients.size}`);
-        // Send HYDRATE immediately to late-joining clients
-        broadcastHydrate(lastKnownTelemetry, 'BRIDGE_READY');
-        // Send current status on connect
-        const bs = serialPort && serialPort.isOpen ? 'CONNECTED' : 'DISCONNECTED';
-        ws.send(JSON.stringify({
-            type: 'STATUS',
-            status: bs,
-            message: 'Bridge status update',
-            port: serialPort?.path,
-        }));
-        ws.on('close', () => {
-            clients.delete(ws);
-            console.log(`WebSocket client disconnected. Remaining: ${clients.size}`);
-        });
-        ws.on('message', async (message) => {
-            let data;
-            try {
-                data = JSON.parse(message.toString());
-            }
-            catch {
-                return; // Ignore non-JSON messages
-            }
-            if (data.type === 'COMMAND' && data.cmd) {
-                // Forward command to serial with queue pacing and ESTOP priority
-                queueCommand(data.cmd);
-            }
-        });
-    });
-    return { server: httpServer, port: boundPort };
+
+    return serverStartPromise;
 }
 // --- Startup: find port and open ---
 void (async () => {
