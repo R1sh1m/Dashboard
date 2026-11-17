@@ -52,13 +52,17 @@ jobs:
           path: release/*.exe
           retention-days: 30
 
+      - name: Extract version from package.json
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
+
       - name: Create GitHub Release with installer
         if: github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           files: release/*.exe
-          tag_name: v${{ github.run_number }}
-          name: Artemis Ground Station v${{ github.run_number }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Artemis Ground Station v${{ steps.version.outputs.version }}
           body: |
             One-click installer for the Artemis Ground Station Dashboard.
             
@@ -66,7 +70,7 @@ jobs:
             - React dashboard + Express/WebSocket bridge server
             - Electron runtime (desktop window)
             - Silicon Labs CP210x USB-to-UART driver (installed on first run)
-            - Windows Firewall rule for port 3001 (LAN streaming)
+            - Windows Firewall rule for the bridge port (LAN streaming)
             
             ## First-run setup
             1. Plug the ESP32 ground bridge into your laptop's USB port
@@ -75,7 +79,8 @@ jobs:
             4. Dashboard launches — connection toast shows local + LAN URLs
             
             ## Access from other devices
-            http://<laptop-wifi-ip>:3001
+            The bridge server binds to port 3001 by default and auto-falls back to 3002–3010 if in use.
+            The connection toast shows the actual local and LAN URLs.
           draft: false
           prerelease: false
         env:
