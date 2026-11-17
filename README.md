@@ -209,9 +209,9 @@ The `.exe` installer is the recommended end-user distribution for the Artemis Gr
 2. Run the installer and follow the prompts
 3. Launch "Artemis Ground Station" from the Start menu
 
-**First run**: The setup wizard will guide you through 6 steps — Welcome, API Keys, Drivers (CP210x), Firewall (port 3001), Serial Port, and Finish — exactly as documented in [`Docs/ELECTRON_SETUP.md`](Docs/ELECTRON_SETUP.md). The Map API key is required; weather and cloud keys are optional.
+**First run**: The setup wizard will guide you through 6 steps — Welcome, API Keys, Drivers (CP210x), Firewall (port 3001, auto-fallback to 3002–3010), Serial Port, and Finish — exactly as documented in [`Docs/ELECTRON_SETUP.md`](Docs/ELECTRON_SETUP.md). The Map API key is required; weather and cloud keys are optional.
 
-**Connection toast**: After setup completes, a connection toast appears in the bottom-right corner showing the **local URL** (`http://localhost:3001`) and the **LAN URL** (`http://<laptop-ip>:3001`). Share the LAN URL with tablets and phones on the same Wi-Fi network to view the dashboard remotely.
+**Connection toast**: After setup completes, a connection toast appears in the bottom-right corner showing the **local URL** (`http://localhost:<port>`) and the **LAN URL** (`http://<laptop-ip>:<port>`). Share the LAN URL with tablets and phones on the same Wi-Fi network to view the dashboard remotely.
 
 ### Multi-Device Field Access (WebSocket Bridge)
 
@@ -219,7 +219,7 @@ The laptop plugged into the ESP32 via USB can act as a host server so tablets an
 
 ```bash
 npm run build   # Build the dashboard
-npm run server:start  # Start Express + WebSocket bridge on port 3001
+npm run server:start  # Start Express + WebSocket bridge (port 3001, auto-fallback to 3002–3010)
 ```
 
 Or in one step:
@@ -233,7 +233,7 @@ The server logs the local and LAN URLs on startup:
 ```
 === Artemis Ground Bridge Server ===
 Listening on http://localhost:3001
-Listening on http://192.168.43.1:3001   # your laptop's Wi-Fi IP
+Listening on http://192.168.43.1:3001   # your laptop's Wi-Fi IP (or 3002–3010 if 3001 is in use)
 WebSocket at ws://localhost:3001/ws
 ```
 

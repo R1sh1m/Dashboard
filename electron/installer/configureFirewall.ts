@@ -2,21 +2,15 @@ import { execSync } from 'child_process';
 import { isAdmin } from './admin.js';
 
 /**
- * The TCP port used by the Artemis Ground Station WebSocket/HTTP server.
- * This port must be allowed through the Windows Firewall for LAN clients
- * to connect to the dashboard.
- */
-const ARTEMIS_PORT = 3001;
-
-/**
  * Configures Windows Firewall to allow inbound TCP connections on the
- * Artemis Ground Station port (3001).
+ * Artemis Ground Station port.
  *
  * Requires administrator privileges.
  *
+ * @param port - The TCP port the bridge server is bound to.
  * @returns Status object with success flag and message.
  */
-export async function configureFirewall(): Promise<{ success: boolean; message: string }> {
+export async function configureFirewall(port: number): Promise<{ success: boolean; message: string }> {
   if (!(await isAdmin())) {
     return {
       success: false,
@@ -27,13 +21,13 @@ export async function configureFirewall(): Promise<{ success: boolean; message: 
   try {
     // Add inbound rule for Artemis Ground Station WebSocket/HTTP port
     const ruleName = 'Artemis Ground Station';
-    const command = `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=allow protocol=TCP localport=${ARTEMIS_PORT} profile=any`;
+    const command = `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=allow protocol=TCP localport=${port} profile=any`;
 
     execSync(command, { stdio: 'pipe' });
 
     return {
       success: true,
-      message: `Firewall rule "${ruleName}" added successfully. TCP port ${ARTEMIS_PORT} is now allowed for inbound connections.`,
+      message: `Firewall rule "${ruleName}" added successfully. TCP port ${port} is now allowed for inbound connections.`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -41,7 +35,7 @@ export async function configureFirewall(): Promise<{ success: boolean; message: 
     if (msg.includes('The object already exists') || msg.includes('already exists')) {
       return {
         success: true,
-        message: `Firewall rule "Artemis Ground Station" already exists. TCP port ${ARTEMIS_PORT} is allowed.`,
+        message: `Firewall rule "Artemis Ground Station" already exists. TCP port ${port} is allowed.`,
       };
     }
     return {

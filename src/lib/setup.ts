@@ -62,7 +62,7 @@ export async function downloadDriver(): Promise<DriverResult> {
 }
 
 /**
- * Configures the Windows firewall to allow inbound connections on port 3001.
+ * Configures the Windows firewall to allow inbound connections on the bridge port (defaults to 3001, auto-fallback to 3002–3010).
  * Returns a result object with success status and message.
  */
 export async function configureFirewall(): Promise<FirewallResult> {

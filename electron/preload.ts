@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   systemConfigureFirewall: () => ipcRenderer.invoke('system:configureFirewall'),
   systemListSerialPorts: () => ipcRenderer.invoke('system:listSerialPorts'),
   systemIsAdmin: () => ipcRenderer.invoke('system:isAdmin'),
+  systemGetBridgePort: () => ipcRenderer.invoke('system:getBridgePort'),
 });

@@ -5,7 +5,8 @@ import type { WebSerialCallbacks, SerialConnectionStatus } from './telemetryTran
 /**
  * WebSocket client transport for the Artemis Ground Station Dashboard.
  * Connects to the Web Serial -> WebSocket bridge running on the laptop host
- * (ws://<host>:3001), forwarding serial telemetry and commands over Wi-Fi.
+ * (ws://<host>:<port>, where port defaults to 3001 with auto-fallback to 3002–3010),
+ * forwarding serial telemetry and commands over Wi-Fi.
  *
  * Implements ITelemetryService so the React UI works identically whether the
  * ESP32 is connected via direct USB WebSerial or through the bridge.
@@ -27,13 +28,15 @@ export class WsSerialService {
 
   constructor(host?: string) {
     // When served from the laptop host, window.location.host is the WS address.
-    // During local Vite dev (localhost), fallback to localhost:3001.
+    // During local Vite dev (localhost), the bridge port is window.location.port
+    // when served by the bridge; otherwise fall back to 3001.
     if (host) {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       this.wsUrl = `${proto}//${host}/ws`;
     } else if (typeof window !== 'undefined' && window.location.host) {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      this.wsUrl = `${proto}//${window.location.host}/ws`;
+      const port = window.location.port ? `:${window.location.port}` : '';
+      this.wsUrl = `${proto}//${window.location.hostname}${port}/ws`;
     } else {
       this.wsUrl = 'ws://localhost:3001/ws';
     }

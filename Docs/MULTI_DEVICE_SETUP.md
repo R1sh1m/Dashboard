@@ -73,7 +73,9 @@ netsh advfirewall firewall add rule name="Artemis Bridge" dir=in action=allow pr
 
 ## Troubleshooting
 
-### Port 3001 Already in Use
+### Port Already in Use
+
+The bridge server automatically selects an available port (3001, then 3002–3010) if the default is in use. If you still encounter `EADDRINUSE`:
 
 ```powershell
 # Find and kill the process
@@ -83,6 +85,8 @@ if ($tcp) { Stop-Process -Id $tcp.OwningProcess -Force }
 # Or use alternate port
 $env:PORT="3002"; node --import tsx/esm server/index.ts
 ```
+
+**Note**: The app now auto-falls back to ports 3002–3010 if 3001 is occupied, so manual intervention is rarely needed.
 
 ### Tablet Can't Reach Laptop
 

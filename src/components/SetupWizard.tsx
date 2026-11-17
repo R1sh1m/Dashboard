@@ -5,7 +5,7 @@
  *   0. Welcome
  *   1. API Keys (optional)
  *   2. Drivers (CP210x USB-to-UART)
- *   3. Firewall (port 3001)
+ *   3. Firewall (port 3001, auto-fallback to 3002–3010)
  *   4. Serial Port (select ESP32)
  *   5. Finish
  *
@@ -73,7 +73,7 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         <p className="mt-3 text-sm leading-relaxed text-neutral-400 max-w-md">
           This wizard sets up your Artemis ground station end to end: it connects
           your laptop to the ESP32 ground bridge over USB, streams rover telemetry
-          over a WebSocket bridge on port 3001, and renders the rover's position
+          over a WebSocket bridge on port 3001 (auto-fallback to 3002–3010), and renders the rover's position
           on a live map — both on this laptop and over your LAN.
         </p>
         <div className="setup-instruction mt-4">
@@ -423,12 +423,22 @@ function StepFirewall({ onNext, onBack }: { onNext: () => void; onBack: () => vo
   const [status, setStatus] = useState<FirewallStatus>('idle');
   const [message, setMessage] = useState('');
   const [isAdminCheck, setIsAdminCheck] = useState<boolean | null>(null);
+  const [bridgePort, setBridgePort] = useState<number | null>(null);
 
-  // Check admin status on mount
+  // Check admin status and resolve the bridge port on mount
   useEffect(() => {
     (async () => {
       const result = await isAdmin();
       setIsAdminCheck(result);
+      // Resolve the actual bridge port from the main process (falls back to 3001 in dev)
+      if (typeof window !== 'undefined' && window.electronAPI?.systemGetBridgePort) {
+        try {
+          const port = await window.electronAPI.systemGetBridgePort();
+          setBridgePort(port ?? null);
+        } catch {
+          setBridgePort(null);
+        }
+      }
     })();
   }, []);
 
@@ -454,13 +464,13 @@ function StepFirewall({ onNext, onBack }: { onNext: () => void; onBack: () => vo
     <div className="flex flex-col gap-6">
       <h2 className="text-lg font-semibold text-[#f5f5f7]">Firewall</h2>
       <p className="text-xs text-neutral-400">
-        Port <strong>3001</strong> must be open for LAN streaming (WebSocket bridge).
+        Port <strong>{bridgePort ?? 3001}</strong> must be open for LAN streaming (WebSocket bridge).
         Allow inbound connections so other devices on your network can access the dashboard.
       </p>
       <div className="setup-instruction">
         <p>
           Clicking <strong>Allow Firewall Access</strong> creates a Windows Defender Firewall
-          rule that permits inbound TCP connections on port 3001. This is required for the
+          rule that permits inbound TCP connections on port {bridgePort ?? 3001}. This is required for the
           WebSocket bridge that relays telemetry to tablets and phones on your LAN.
         </p>
       </div>
@@ -482,7 +492,7 @@ function StepFirewall({ onNext, onBack }: { onNext: () => void; onBack: () => vo
           </div>
           <div className="flex-1">
             <p className="text-sm font-medium text-[#f5f5f7]">
-              Port 3001 — Inbound Access
+              Port {bridgePort ?? 3001} — Inbound Access
             </p>
             <p className="text-xs text-neutral-400">
               WebSocket bridge for LAN streaming
@@ -701,6 +711,15 @@ function StepFinish({ ctx, onFinish, onBack }: {
   onBack: () => void;
 }) {
   const hasApiKeys = Object.values(ctx.apiKeys).some((v) => v.length > 0);
+  const [bridgePort, setBridgePort] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI?.systemGetBridgePort) {
+      window.electronAPI.systemGetBridgePort().then((port: number | null) => {
+        setBridgePort(port ?? null);
+      });
+    }
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
@@ -713,8 +732,8 @@ function StepFinish({ ctx, onFinish, onBack }: {
         <p>
           When you click <strong>Finish Setup</strong>, the dashboard will launch and begin
           streaming telemetry from the ESP32 bridge. A connection toast will appear in the
-          bottom-right corner showing the <strong>local URL</strong> (http://localhost:3001) and
-          the <strong>LAN URL</strong> (http://&lt;your-ip&gt;:3001) so you can access the
+          bottom-right corner showing the <strong>local URL</strong> (http://localhost:{bridgePort ?? 3001}) and
+          the <strong>LAN URL</strong> (http://&lt;your-ip&gt;:{bridgePort ?? 3001}) so you can access the
           dashboard from tablets and phones on the same network.
         </p>
       </div>

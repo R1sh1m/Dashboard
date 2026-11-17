@@ -45,7 +45,7 @@ function resolveDistDir() {
 const distDir = resolveDistDir();
 // CORS enabled for LAN access
 app.use(cors({ origin: true }));
-// Serve static files from dist on port 3001
+// Serve static files from dist (port determined at listen time)
 app.use(express.static(distDir));
 let httpServer;
 let wss;
@@ -228,8 +228,9 @@ async function openSerialPort(portPath) {
 }
 // --- Server setup ---
 /**
- * Start the HTTP server with port-in-use protection.
- * If the configured port is already bound, logs an error and tries an alternate port.
+ * Start the HTTP server with dynamic port selection.
+ * Tries the configured port, then a range of alternates (port+1 … port+9)
+ * if each is already in use. Resolves with the port actually bound.
  */
 function startHttpServer() {
     return new Promise((resolve, reject) => {
@@ -244,18 +245,17 @@ function startHttpServer() {
                 console.log(`WebSocket at ws://localhost:${listenPort}/ws`);
                 // Send initial HYDRATE status
                 broadcastHydrate(lastKnownTelemetry, 'BRIDGE_READY');
-                resolve();
+                resolve(listenPort);
             })
                 .on('error', (err) => {
                 if (err.code === 'EADDRINUSE') {
                     console.warn(`[server] Port ${listenPort} is in use. Trying alternate port...`);
-                    if (listenPort === port) {
-                        // First failure: try the next port
-                        tryListen(port + 1);
+                    const nextPort = listenPort + 1;
+                    if (nextPort <= port + 9) {
+                        tryListen(nextPort);
                     }
                     else {
-                        // Second failure: give up
-                        console.error(`[server] Could not bind to port ${port} or ${port + 1}. Exiting.`);
+                        console.error(`[server] Could not bind to any port from ${port} to ${port + 9}. Exiting.`);
                         reject(err);
                     }
                 }
@@ -267,9 +267,10 @@ function startHttpServer() {
         tryListen(port);
     });
 }
-export function createServer() {
-    void startHttpServer().catch((err) => {
+export async function createServer() {
+    const boundPort = await startHttpServer().catch((err) => {
         console.error('[server] Failed to start HTTP server:', err);
+        throw err;
     });
     // HTTP health check at /api/status returning bridge connection state
     app.get('/api/status', (_req, res) => {
@@ -279,7 +280,7 @@ export function createServer() {
             bridgeStatus,
             port: portName,
             lanIp,
-            serverPort: port,
+            serverPort: boundPort,
             lastKnownTelemetrySeq: lastKnownTelemetry?.seq ?? null,
             clientsConnected: clients.size,
         });
@@ -317,7 +318,7 @@ export function createServer() {
             }
         });
     });
-    return httpServer;
+    return { server: httpServer, port: boundPort };
 }
 // --- Startup: find port and open ---
 void (async () => {
@@ -340,4 +341,6 @@ void (async () => {
         }, { pollIntervalMs: 2000 });
     }
 })();
-createServer();
+createServer().catch((err) => {
+    console.error('[server] Failed to start HTTP server:', err);
+});

@@ -1,6 +1,7 @@
 {
   "appId": "com.artemis.groundstation",
   "productName": "Artemis Ground Station",
+  "icon": "public/artemis-logo.png",
   "directories": {
     "output": "release"
   },

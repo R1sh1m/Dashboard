@@ -10,12 +10,22 @@ import { isAdmin } from './installer/admin.js';
 // Initialize electron-store for persistent settings
 const store = new Store();
 
-// Start the Express + WebSocket server before creating the window
-function startBackend() {
-  createServer();
+// The port the bridge server actually bound to (set after server starts).
+let bridgePort: number | null = null;
+
+export function getBridgePort(): number | null {
+  return bridgePort;
 }
 
-function createWindow() {
+// Start the Express + WebSocket server and return the port it bound to.
+async function startBackend(): Promise<number> {
+  const { port } = await createServer()
+  bridgePort = port
+  store.set('bridgePort', port)
+  return port
+}
+
+function createWindow(port: number) {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -26,16 +36,16 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-  });
+  })
 
-  // Load the dashboard served by the Express server
-  win.loadURL('http://localhost:3001');
+  // Load the dashboard served by the Express server on the bound port.
+  win.loadURL(`http://localhost:${port}`)
 }
 
-app.whenReady().then(() => {
-  startBackend();
-  createWindow();
-});
+app.whenReady().then(async () => {
+  const port = await startBackend()
+  createWindow(port)
+})
 
 // IPC handlers
 
@@ -63,10 +73,14 @@ ipcMain.handle('system:downloadDriver', async () => {
 
 ipcMain.handle('system:configureFirewall', async () => {
   try {
-    return await configureFirewall();
+    return await configureFirewall(bridgePort ?? 3001);
   } catch (err: any) {
     return { success: false, message: err?.message ?? 'Firewall configuration failed' };
   }
+});
+
+ipcMain.handle('system:getBridgePort', async () => {
+  return bridgePort;
 });
 
 ipcMain.handle('system:listSerialPorts', async () => {
@@ -90,6 +104,10 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    if (bridgePort !== null) {
+      createWindow(bridgePort);
+    } else {
+      startBackend().then((port) => createWindow(port));
+    }
   }
 });

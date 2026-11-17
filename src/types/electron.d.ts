@@ -32,6 +32,13 @@ export interface SerialPortInfo {
 
 export interface ElectronAPI {
   invoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T>;
+  setupGetState: () => Promise<SetupState>;
+  setupSave: (data: { setupComplete?: boolean; apiKeys?: any }) => Promise<boolean>;
+  systemDownloadDriver: () => Promise<DriverResult>;
+  systemConfigureFirewall: () => Promise<FirewallResult>;
+  systemListSerialPorts: () => Promise<SerialPortInfo[]>;
+  systemIsAdmin: () => Promise<boolean>;
+  systemGetBridgePort: () => Promise<number | null>;
 }
 
 declare global {

@@ -75,23 +75,23 @@ When you launch the app for the first time, a 6-step setup wizard guides you thr
 
 ---
 
-### Step 4: Firewall (Port 3001)
+### Step 4: Firewall (Port)
 
-**What it does**: Creates a Windows Defender Firewall rule to allow inbound TCP connections on port 3001.
+**What it does**: Creates a Windows Defender Firewall rule to allow inbound TCP connections on the bridge server port (defaults to 3001, auto-selects 3002–3010 if in use).
 
 **What to do**:
 1. Click **Allow Firewall Access**
 2. Confirm the UAC (User Account Control) prompt if it appears
 3. Click **Continue**
 
-**What the rule does**: Permits inbound TCP connections on port 3001, which is required for the WebSocket bridge that relays telemetry to tablets and phones on your LAN.
+**What the rule does**: Permits inbound TCP connections on the bridge port, which is required for the WebSocket bridge that relays telemetry to tablets and phones on your LAN.
 
-**Expected outcome**: Other devices on your network can access the dashboard at `http://<your-laptop-ip>:3001`.
+**Expected outcome**: Other devices on your network can access the dashboard at `http://<your-laptop-ip>:<port>`. The actual port is shown in the connection toast after setup completes.
 
 **Troubleshooting**:
 - **UAC prompt appeared?** This is normal — click **Yes** to allow the firewall rule.
 - **Firewall configuration failed?** Run the app as Administrator and try again.
-- **Tablet/phone can't connect?** Verify the firewall rule exists: open Windows Defender Firewall → Advanced Settings → Inbound Rules → look for "Artemis Bridge" or port 3001.
+- **Tablet/phone can't connect?** Verify the firewall rule exists: open Windows Defender Firewall → Advanced Settings → Inbound Rules → look for "Artemis Ground Station".
 
 ---
 
