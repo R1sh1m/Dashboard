@@ -6,6 +6,10 @@ import Store from 'electron-store';
 import { downloadAndInstallCp210xDriver, listNeededDrivers } from './installer/downloadDriver.js';
 import { configureFirewall } from './installer/configureFirewall.js';
 import { isAdmin } from './installer/admin.js';
+import { fileURLToPath } from 'url';
+
+// __dirname is not available in ES modules; shim it for path resolution
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Initialize electron-store for persistent settings
 const store = new Store();
@@ -21,15 +25,12 @@ export function getBridgePort(): number | null {
 }
 
 // Enforce single instance: only one Electron process may run at a time.
-// This prevents a second process from binding port 3001 while the first
-// is already listening (ERR_SERVER_ALREADY_LISTEN).
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    // Someone tried to launch a second instance — focus our existing window.
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -39,10 +40,10 @@ if (!gotTheLock) {
 
 // Start the Express + WebSocket server and return the port it bound to.
 async function startBackend(): Promise<number> {
-  const { port } = await createServer()
-  bridgePort = port
-  store.set('bridgePort', port)
-  return port
+  const { port } = await createServer();
+  bridgePort = port;
+  store.set('bridgePort', port);
+  return port;
 }
 
 function createWindow(port: number) {
@@ -51,12 +52,15 @@ function createWindow(port: number) {
     height: 800,
     minWidth: 1024,
     minHeight: 768,
+    x: 100,
+    y: 100,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-  })
+  });
 
   mainWindow = win;
 
@@ -64,14 +68,18 @@ function createWindow(port: number) {
     if (mainWindow === win) mainWindow = null;
   });
 
-  // Load the dashboard served by the Express server on the bound port.
-  win.loadURL(`http://localhost:${port}`)
+  win.webContents.on('did-finish-load', () => {
+    win.show();
+    win.focus();
+  });
+
+  win.loadURL(`http://localhost:${port}`);
 }
 
 app.whenReady().then(async () => {
-  const port = await startBackend()
-  createWindow(port)
-})
+  const port = await startBackend();
+  createWindow(port);
+});
 
 // IPC handlers
 

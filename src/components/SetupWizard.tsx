@@ -218,8 +218,22 @@ function StepApiKeys({ ctx, onNext, onBack }: {
       </p>
       <div className="setup-instruction">
         <p>
-          <strong>Map API key</strong> — Get a free key from your map tile provider
-          (e.g., OpenStreetMap-based tile services, Mapbox, or Stadia Maps).
+          <strong>Map API key</strong> — Get a free key from your map tile provider:
+        </p>
+        <ul className="text-left text-neutral-400 list-disc pl-4 space-y-1 mt-1 max-w-md">
+          <li>
+            <strong>Mapbox</strong> — <a href="https://account.mapbox.com/" className="text-[#0A84FF]" target="_blank" rel="noopener noreferrer">mapbox.com</a>
+          </li>
+          <li>
+            <strong>Stadia Maps</strong> — <a href="https://client.stadiamaps.com/" className="text-[#0A84FF]" target="_blank" rel="noopener noreferrer">stadiamaps.com</a>
+          </li>
+          <li>
+            <strong>OpenStreetMap-based services</strong> — e.g.{' '}
+            <a href="https://www.thunderforest.com/" className="text-[#0A84FF]" target="_blank" rel="noopener noreferrer">Thunderforest</a> or{' '}
+            <a href="https://carto.com/" className="text-[#0A84FF]" target="_blank" rel="noopener noreferrer">CARTO</a>
+          </li>
+        </ul>
+        <p className="mt-2 text-xs text-neutral-400">
           The key is stored locally and never uploaded to external servers.
         </p>
       </div>
@@ -789,13 +803,13 @@ const STEP_LABELS = ['Welcome', 'API Keys', 'Drivers', 'Firewall', 'Serial Port'
 
 function StepIndicator({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
   return (
-    <nav className="flex items-center gap-0 w-full" aria-label="Setup progress" role="progressbar" aria-valuenow={currentStep + 1} aria-valuemin={1} aria-valuemax={totalSteps}>
+    <nav className="flex items-center gap-2 max-w-lg mx-auto px-4" aria-label="Setup progress" role="progressbar" aria-valuenow={currentStep + 1} aria-valuemin={1} aria-valuemax={totalSteps}>
       {STEP_LABELS.map((label, i) => {
         const isCurrent = i === currentStep;
         const isComplete = i < currentStep;
         const isLast = i === totalSteps - 1;
         return (
-          <div key={label} className="flex items-center flex-1">
+          <div key={label} className="flex items-center flex-shrink-0">
             <div className="flex flex-col items-center gap-1.5">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
@@ -807,7 +821,7 @@ function StepIndicator({ currentStep, totalSteps }: { currentStep: number; total
               >
                 {isComplete ? <Check size={14} /> : i + 1}
               </div>
-              <span className={`text-[10px] leading-none ${
+              <span className={`text-xs leading-none ${
                 isCurrent ? 'text-[#0A84FF] font-medium' :
                 isComplete ? 'text-[#0A84FF]/60' :
                 'text-neutral-600'
@@ -816,7 +830,7 @@ function StepIndicator({ currentStep, totalSteps }: { currentStep: number; total
               </span>
             </div>
             {!isLast && (
-              <div className={`flex-1 h-px mx-1 ${
+              <div className={`w-4 h-px mx-1 ${
                 isComplete ? 'bg-[#0A84FF]' : 'bg-neutral-700'
               }`} />
             )}
@@ -893,7 +907,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   ], [ctx, handleNext, handleBack, handleFinish]);
 
   return (
-    <div className="setup-wizard w-screen h-screen bg-[#0a0a0c] text-[#f5f5f7] flex flex-col items-center justify-center p-6 overflow-hidden">
+    <div className="setup-wizard w-screen h-screen bg-[#0a0a0c] text-[#f5f5f7] flex flex-col items-center justify-start px-6 pt-16 pb-6 overflow-hidden">
       {/* Global styles injected via style tag for self-contained wizard */}
       <style>{`
         .setup-wizard {
@@ -1020,7 +1034,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
       <div className="w-full max-w-lg flex flex-col gap-6">
         <StepIndicator currentStep={step} totalSteps={6} />
-        <div className="glass-panel rounded-2xl p-6 sm:p-8 flex flex-col gap-4 min-h-[280px]">
+        <div className="glass-panel rounded-2xl p-6 sm:p-8 flex flex-col gap-4 min-h-[420px]">
           {steps[step]}
         </div>
       </div>
