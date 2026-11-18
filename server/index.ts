@@ -24,30 +24,45 @@ const __dirname = path.dirname(__filename);
  * an `.asar` archive and the real `dist/` lives alongside the app.
  */
 function resolveDistDir(): string {
+  // Helper: check if a file exists (works on disk; ASAR paths handled by caller)
+  const fileExists = (filePath: string): boolean => {
+    try {
+      return fs.existsSync(filePath);
+    } catch {
+      return false;
+    }
+  };
+
   // 1. Standard path: server/../dist (works in dev and unbundled builds)
   const standardDist = path.resolve(__dirname, '..', 'dist');
-  if (fs.existsSync(path.join(standardDist, 'index.html'))) {
+  if (fileExists(path.join(standardDist, 'index.html'))) {
     return standardDist;
   }
 
-  // 2. Electron ASAR: process.resourcesPath/app/dist
+  // 2. extraResources: dist copied to resources/dist/ at build time
   const resourcesPath = (process as { resourcesPath?: string }).resourcesPath;
   if (typeof resourcesPath === 'string') {
+    const resourcesDist = path.join(resourcesPath, 'dist');
+    if (fileExists(path.join(resourcesDist, 'index.html'))) {
+      return resourcesDist;
+    }
+
+    // 3. Electron ASAR fallback: process.resourcesPath/app/dist
     const asarDist = path.join(resourcesPath, 'app', 'dist');
-    if (fs.existsSync(path.join(asarDist, 'index.html'))) {
+    if (fileExists(path.join(asarDist, 'index.html'))) {
       return asarDist;
     }
   }
 
-  // 3. Fallback: two levels up from __dirname (covers nested packaging)
+  // 4. Fallback: two levels up from __dirname (covers nested packaging)
   const fallbackDist = path.resolve(__dirname, '..', '..', 'dist');
-  if (fs.existsSync(path.join(fallbackDist, 'index.html'))) {
+  if (fileExists(path.join(fallbackDist, 'index.html'))) {
     return fallbackDist;
   }
 
-  // 4. Last resort: return the standard path so express.static logs a clear error
+  // 5. Last resort: return the standard path so express.static logs a clear error
   console.warn(
-    `[dist] Could not locate dist/index.html. Checked: ${standardDist}, ${fallbackDist}. ` +
+    `[dist] Could not locate dist/index.html. Checked: ${standardDist}, ${resourcesPath ? path.join(resourcesPath, '..', 'dist') : 'N/A'}, ${fallbackDist}. ` +
     'Serving from ' + standardDist + ' (files may not be found).'
   );
   return standardDist;

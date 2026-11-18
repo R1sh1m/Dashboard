@@ -6,8 +6,10 @@
     "output": "release"
   },
   "files": [
-    "dist/**",
     "electron/dist/**"
+  ],
+  "extraResources": [
+    { "from": "dist", "to": "dist", "filter": ["**/*"] }
   ],
   "win": {
     "target": [
