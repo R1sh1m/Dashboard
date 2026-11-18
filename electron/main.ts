@@ -13,8 +13,28 @@ const store = new Store();
 // The port the bridge server actually bound to (set after server starts).
 let bridgePort: number | null = null;
 
+// Reference to the main window so a second-instance launch can focus it.
+let mainWindow: BrowserWindow | null = null;
+
 export function getBridgePort(): number | null {
   return bridgePort;
+}
+
+// Enforce single instance: only one Electron process may run at a time.
+// This prevents a second process from binding port 3001 while the first
+// is already listening (ERR_SERVER_ALREADY_LISTEN).
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Someone tried to launch a second instance — focus our existing window.
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
 }
 
 // Start the Express + WebSocket server and return the port it bound to.
@@ -37,6 +57,12 @@ function createWindow(port: number) {
       nodeIntegration: false,
     },
   })
+
+  mainWindow = win;
+
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
 
   // Load the dashboard served by the Express server on the bound port.
   win.loadURL(`http://localhost:${port}`)

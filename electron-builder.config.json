@@ -21,7 +21,9 @@
     "oneClick": false,
     "perMachine": true,
     "allowToChangeInstallationDirectory": true,
-    "artifactName": "${productName} Setup ${version}.${ext}"
+    "artifactName": "${productName} Setup ${version}.${ext}",
+    "deleteAppDataOnUninstall": true,
+    "include": "scripts/uninstaller.nsh"
   },
   "publish": null
 }
