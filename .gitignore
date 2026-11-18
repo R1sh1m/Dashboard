@@ -120,6 +120,9 @@ bsec_v3-3-0-1/
 # Test artifacts
 Docs/TestResults/
 
+# Electron build output (installers, unpacked apps, blockmaps)
+release/
+
 # Personal reference files
 Sender_station/guide.pdf
 
